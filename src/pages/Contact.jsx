@@ -49,9 +49,6 @@ const Contact = () => {
             <main className="container" style={{ padding: '80px 0' }}>
                 <div style={{ textAlign: 'center', marginBottom: '60px' }}>
                     <h1 style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '15px' }}>Visit Us</h1>
-                    <p style={{ color: 'var(--text-muted)', maxWidth: '600px', margin: '0 auto' }}>
-                        We're located in the heart of the city. Come for the oysters, stay for the coffee.
-                    </p>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '30px', marginBottom: '60px' }}>
