@@ -41,6 +41,49 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
+  padding-bottom: 0;
+  /* Remove bottom padding to fit categories */
+}
+
+.category-nav-wrapper {
+  padding: 12px 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.category-slider {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
+  padding: 0 20px;
+}
+
+.category-slider::-webkit-scrollbar {
+  display: none;
+  /* Chrome/Safari */
+}
+
+.category-item {
+  flex: 0 0 auto;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+}
+
+.category-item.active {
+  background: var(--primary);
+  color: white;
 }
 
 .header-container {
@@ -147,9 +190,9 @@ body {
 /* Menu Styles */
 .menu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 20px;
-  padding: 30px 0;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 20px 0;
 }
 
 .menu-item-card {
@@ -173,21 +216,31 @@ body {
 }
 
 .menu-item-info {
-  padding: 15px;
+  padding: 10px;
 }
 
 .menu-item-name {
   font-family: 'Playfair Display', serif;
-  font-size: 1.25rem;
-  margin-bottom: 8px;
+  font-size: 1rem;
+  margin-bottom: 4px;
   color: var(--primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .menu-item-desc {
-  font-size: 0.9rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  margin-bottom: 16px;
-  min-height: 2.7em;
+  margin-bottom: 8px;
+  min-height: 2.4em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .menu-item-footer {
@@ -199,7 +252,12 @@ body {
 .menu-item-price {
   font-weight: 700;
   color: var(--text);
-  font-size: 1.1rem;
+  font-size: 0.95rem;
+}
+
+.btn-add-sm {
+  padding: 6px 10px !important;
+  font-size: 0.7rem !important;
 }
 
 /* Button Styles */

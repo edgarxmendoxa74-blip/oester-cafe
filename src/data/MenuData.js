@@ -10,11 +10,11 @@ export const menuItems = [
     // Oysters
     {
         id: 1,
-        categoryId: 'oysters',
+        category_id: 'oysters',
         name: 'Fresh Baked Oysters',
         description: 'Juicy oysters baked with cheese and garlic butter.',
         price: 250,
-        promoPrice: 220,
+        promo_price: 220,
         image: 'https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?auto=format&fit=crop&w=400&q=80',
         variations: [
             { name: 'Standard (8pcs)', price: 250 },
@@ -28,7 +28,7 @@ export const menuItems = [
     },
     {
         id: 2,
-        categoryId: 'oysters',
+        category_id: 'oysters',
         name: 'Oysters Rockefeller',
         description: 'Baked oysters with spinach, herbs, and breadcrumbs.',
         price: 280,
@@ -41,11 +41,11 @@ export const menuItems = [
     // Wings
     {
         id: 3,
-        categoryId: 'wings',
+        category_id: 'wings',
         name: 'Garlic Parmesan Wings',
         description: 'Crispy wings tossed in garlic and parmesan cheese.',
         price: 180,
-        promoPrice: 165,
+        promo_price: 165,
         image: 'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?auto=format&fit=crop&w=400&q=80',
         variations: [
             { name: '6pcs', price: 180 },
@@ -57,7 +57,7 @@ export const menuItems = [
     },
     {
         id: 4,
-        categoryId: 'wings',
+        category_id: 'wings',
         name: 'Spicy Buffalo Wings',
         description: 'Classic spicy wings served with dip.',
         price: 180,
@@ -71,7 +71,7 @@ export const menuItems = [
     // Coffee
     {
         id: 5,
-        categoryId: 'coffee',
+        category_id: 'coffee',
         name: 'Signature Latte',
         description: 'Smooth espresso with steamed milk and cream.',
         price: 120,
@@ -87,7 +87,7 @@ export const menuItems = [
     },
     {
         id: 6,
-        categoryId: 'coffee',
+        category_id: 'coffee',
         name: 'Iced Americano',
         description: 'Refreshing bold coffee over ice.',
         price: 90,
