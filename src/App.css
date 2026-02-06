@@ -332,6 +332,127 @@ body {
   animation: fadeInUp 0.8s ease forwards;
 }
 
+/* Loading States */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* Top Progress Bar */
+.top-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+  z-index: 9999;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px var(--accent);
+}
+
+.top-loader-anim {
+  animation: top-load 2s infinite ease-in-out;
+}
+
+@keyframes top-load {
+  0% {
+    width: 0;
+    left: 0;
+  }
+
+  50% {
+    width: 70%;
+    left: 15%;
+  }
+
+  100% {
+    width: 0;
+    left: 100%;
+  }
+}
+
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-top: -8px;
+  margin-left: -8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-soft {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse {
+  animation: pulse-soft 1.5s ease-in-out infinite;
+}
+
+/* Centered Loader */
+.loader-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  width: 100%;
+}
+
+.themed-spinner {
+  width: 60px;
+  height: 60px;
+  border: 6px solid #e2e8f0;
+  border-top: 6px solid var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 25px;
+}
+
+.loader-text {
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 1px;
+  font-family: 'Playfair Display', serif;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .hero-section {

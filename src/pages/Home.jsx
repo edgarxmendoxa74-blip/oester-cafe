@@ -45,15 +45,13 @@ const Home = () => {
         address: 'Poblacion, El Nido, Palawan',
         contact: '09563713967',
         logo_url: '',
-        banner_images: [
-            'https://images.unsplash.com/photo-1517701604599-bb29b565094d?auto=format&fit=crop&w=1200&q=80',
-            'https://images.unsplash.com/photo-1541167760496-162955ed8a9f?auto=format&fit=crop&w=1200&q=80',
-            'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80'
-        ]
+        banner_images: []
     });
 
     const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
     const [menuLoading, setMenuLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
     // Store status logic
     const isStoreOpen = () => {
@@ -113,9 +111,9 @@ const Home = () => {
                 }
                 if (savedOrderTypes) setOrderTypes(JSON.parse(savedOrderTypes));
 
-                // If we have categories and items (either from local or initial state), 
-                // we can stop the initial skeleton loader early to show static data.
-                if ((categories.length > 0 || initialCategories.length > 0) && (items.length > 0 || menuItems.length > 0)) {
+                // If we have categories and items in local storage, we can show them instantly.
+                // Otherwise, we keep menuLoading true to show the centered spinner.
+                if (savedCats && savedItems) {
                     setMenuLoading(false);
                 }
             } catch (err) {
@@ -125,7 +123,10 @@ const Home = () => {
 
         loadFromLocal();
 
+        loadFromLocal();
+
         const fetchData = async () => {
+            setIsRefreshing(true);
             try {
                 // Fetch all data in parallel
                 const [
@@ -177,6 +178,7 @@ const Home = () => {
                 console.error('Error fetching fresh data:', error);
             } finally {
                 setMenuLoading(false);
+                setIsRefreshing(false);
             }
         };
 
@@ -277,7 +279,7 @@ const Home = () => {
     const cartTotal = cart.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0);
     const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-    const handlePlaceOrder = () => {
+    const handlePlaceOrder = async () => {
         if (!orderType) {
             alert('Please select an order type (Dine-in, Pickup, or Delivery).');
             return;
@@ -291,42 +293,42 @@ const Home = () => {
 
         if (!paymentMethod) { alert('Please select a payment method.'); return; }
 
-        // --- SAVE ORDER TO SUPABASE ---
-        const itemDetails = cart.map(item => {
-            let d = `${item.name} (x${item.quantity})`;
-            if (item.selectedVariation) d += ` - ${item.selectedVariation.name}`;
-            if (item.selectedFlavors && item.selectedFlavors.length > 0) d += ` [${item.selectedFlavors.join(', ')}]`;
-            if (item.selectedAddons.length > 0) d += ` + ${item.selectedAddons.map(a => a.name).join(', ')}`;
-            return d;
-        });
+        setIsPlacingOrder(true);
+        try {
+            // --- SAVE ORDER TO SUPABASE ---
+            const itemDetails = cart.map(item => {
+                let d = `${item.name} (x${item.quantity})`;
+                if (item.selectedVariation) d += ` - ${item.selectedVariation.name}`;
+                if (item.selectedFlavors && item.selectedFlavors.length > 0) d += ` [${item.selectedFlavors.join(', ')}]`;
+                if (item.selectedAddons.length > 0) d += ` + ${item.selectedAddons.map(a => a.name).join(', ')}`;
+                return d;
+            });
 
-        const newOrder = {
-            order_type: orderType,
-            payment_method: paymentMethod,
-            customer_details: customerDetails,
-            items: itemDetails,
-            total_amount: cartTotal,
-            status: 'Pending'
-        };
+            const newOrder = {
+                order_type: orderType,
+                payment_method: paymentMethod,
+                customer_details: customerDetails,
+                items: itemDetails,
+                total_amount: cartTotal,
+                status: 'Pending'
+            };
 
-        // Async insert (not waiting here to avoid blocking Messenger redirect, but could wait)
-        supabase.from('orders').insert([newOrder]).then(({ error }) => {
-            if (error) console.error('Error saving order to Supabase:', error);
-        });
+            const { error } = await supabase.from('orders').insert([newOrder]);
+            if (error) throw error;
 
-        // Also save to LocalStorage as a local backup
-        const localOrder = { ...newOrder, id: Date.now(), timestamp: new Date().toISOString() };
-        const existingOrders = JSON.parse(localStorage.getItem('orders') || '[]');
-        localStorage.setItem('orders', JSON.stringify([...existingOrders, localOrder]));
+            // Also save to LocalStorage as a local backup
+            const localOrder = { ...newOrder, id: Date.now(), timestamp: new Date().toISOString() };
+            const existingOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+            localStorage.setItem('orders', JSON.stringify([...existingOrders, localOrder]));
 
-        // --- PREPARE MESSENGER MSG ---
-        const orderDetailsStr = itemDetails.join('\n');
-        let customerInfoStr = `Name: ${customerDetails.name}`;
-        if (orderType === 'dine-in') customerInfoStr += `\nTable Number: ${customerDetails.table_number}`;
-        if (orderType === 'pickup') customerInfoStr += `\nPhone: ${customerDetails.phone}\nPickup Time: ${customerDetails.pickup_time}`;
-        if (orderType === 'delivery') customerInfoStr += `\nPhone: ${customerDetails.phone}\nAddress: ${customerDetails.address}\nLandmark: ${customerDetails.landmark}`;
+            // --- PREPARE MESSENGER MSG ---
+            const orderDetailsStr = itemDetails.join('\n');
+            let customerInfoStr = `Name: ${customerDetails.name}`;
+            if (orderType === 'dine-in') customerInfoStr += `\nTable Number: ${customerDetails.table_number}`;
+            if (orderType === 'pickup') customerInfoStr += `\nPhone: ${customerDetails.phone}\nPickup Time: ${customerDetails.pickup_time}`;
+            if (orderType === 'delivery') customerInfoStr += `\nPhone: ${customerDetails.phone}\nAddress: ${customerDetails.address}\nLandmark: ${customerDetails.landmark}`;
 
-        const message = `
+            const message = `
 Hello! I'd like to place an order:
 
 Order Type: ${orderType.toUpperCase()}
@@ -342,12 +344,18 @@ TOTAL AMOUNT: ₱${cartTotal}
 
 Thank you!`.trim();
 
-        const messengerUrl = `https://m.me/oesterscafeandresto?text=${encodeURIComponent(message)}`;
-        window.open(messengerUrl, '_blank');
+            const messengerUrl = `https://m.me/oesterscafeandresto?text=${encodeURIComponent(message)}`;
+            window.open(messengerUrl, '_blank');
 
-        // Optionally clear cart
-        // setCart([]); 
-        setIsCheckoutOpen(false);
+            // Optionally clear cart
+            // setCart([]); 
+            setIsCheckoutOpen(false);
+        } catch (error) {
+            console.error('Error saving order:', error);
+            alert('There was an error saving your order. Please try again.');
+        } finally {
+            setIsPlacingOrder(false);
+        }
     };
 
     const formatTime = (timeStr) => {
@@ -365,11 +373,21 @@ Thank you!`.trim();
 
     return (
         <div className="page-wrapper">
+            {/* Top Loading Bar */}
+            {isRefreshing && <div className="top-loader top-loader-anim"></div>}
+
             {/* Store Closed Overlay */}
             {!isOpen && (
                 <div style={{ background: '#ef4444', color: 'white', textAlign: 'center', padding: '12px', position: 'sticky', top: 0, zIndex: 1200, fontWeight: 700, fontSize: '0.9rem' }}>
                     <Clock size={16} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
                     WE ARE CURRENTLY CLOSED. Our operating hours are {formatTime(storeSettings.open_time) || '4:00 PM'} to {formatTime(storeSettings.close_time) || '1:00 AM'}. Orders are disabled.
+                </div>
+            )}
+
+            {isRefreshing && (
+                <div style={{ position: 'fixed', bottom: '20px', left: '20px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '8px 15px', borderRadius: '20px', fontSize: '0.8rem', zIndex: 1000, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="pulse" style={{ width: '8px', height: '8px', background: 'var(--accent)', borderRadius: '50%' }}></div>
+                    Updating items...
                 </div>
             )}
 
@@ -392,9 +410,9 @@ Thank you!`.trim();
 
                 <div className="category-nav-wrapper">
                     <div className="category-slider">
-                        {menuLoading ? (
+                        {menuLoading && categories.length === 0 ? (
                             [1, 2, 3, 4, 5].map(i => (
-                                <div key={i} className="category-item" style={{ width: '80px', height: '35px', background: '#e2e8f0', border: 'none', animation: 'pulse 1.5s infinite' }}></div>
+                                <div key={i} className="category-item skeleton" style={{ width: '100px', height: '35px', border: 'none' }}></div>
                             ))
                         ) : (
                             categories.map(cat => (
@@ -454,21 +472,11 @@ Thank you!`.trim();
 
 
                 <div className="menu-grid">
-                    {menuLoading && filteredItems.length === 0 ? (
-                        [1, 2, 3, 4, 5, 6].map(i => (
-                            <div key={i} className="menu-item-card" style={{ height: '400px', background: 'white', borderRadius: '24px', overflow: 'hidden' }}>
-                                <div style={{ height: '220px', background: '#e2e8f0', animation: 'pulse 1.5s infinite' }}></div>
-                                <div style={{ padding: '25px' }}>
-                                    <div style={{ height: '24px', background: '#e2e8f0', borderRadius: '4px', marginBottom: '12px', width: '70%', animation: 'pulse 1.5s infinite' }}></div>
-                                    <div style={{ height: '16px', background: '#f1f5f9', borderRadius: '4px', marginBottom: '8px', animation: 'pulse 1.5s infinite' }}></div>
-                                    <div style={{ height: '16px', background: '#f1f5f9', borderRadius: '4px', marginBottom: '20px', width: '90%', animation: 'pulse 1.5s infinite' }}></div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ height: '20px', background: '#e2e8f0', borderRadius: '4px', width: '60px', animation: 'pulse 1.5s infinite' }}></div>
-                                        <div style={{ height: '35px', background: '#e2e8f0', borderRadius: '10px', width: '100px', animation: 'pulse 1.5s infinite' }}></div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))
+                    {menuLoading ? (
+                        <div className="loader-container" style={{ gridColumn: '1 / -1', minHeight: '300px' }}>
+                            <div className="themed-spinner"></div>
+                            <p className="loader-text">Preparing our delicious menu...</p>
+                        </div>
                     ) : (
                         filteredItems.map(item => (
                             <div className="menu-item-card" key={item.id} style={{ opacity: item.out_of_stock ? 0.6 : 1 }}>
@@ -734,8 +742,8 @@ Thank you!`.trim();
                                     <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>₱{cartTotal}</span>
                                 </div>
 
-                                <button className="btn-accent" onClick={handlePlaceOrder} style={{ width: '100%', padding: '18px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontWeight: 800, fontSize: '1.1rem' }}>
-                                    <MessageSquare size={22} /> Confirm Order
+                                <button className={`btn-accent ${isPlacingOrder ? 'btn-loading' : ''}`} onClick={handlePlaceOrder} style={{ width: '100%', padding: '18px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontWeight: 800, fontSize: '1.1rem' }}>
+                                    <MessageSquare size={22} /> {isPlacingOrder ? 'Placing Order...' : 'Confirm Order'}
                                 </button>
                             </div>
                         </div>
