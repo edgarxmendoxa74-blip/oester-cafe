@@ -303,37 +303,36 @@ const AdminDashboard = () => {
                                 [1, 2, 3, 4, 5].map(i => (
                                     <tr key={i}><td colSpan="4" style={{ padding: '15px' }}><div className="skeleton" style={{ height: '50px', borderRadius: '12px' }}></div></td></tr>
                                 ))
-                            ) : (
-                                filteredItems.map(item => (
-                                    <tr key={item.id} style={{ background: '#f8fafc' }}>
-                                        <td style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '15px', borderTopLeftRadius: '12px', borderBottomLeftRadius: '12px' }}>
-                                            <img src={item.image} style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
-                                            <div style={{ fontWeight: 600 }}>{item.name}</div>
-                                        </td>
-                                        <td style={{ padding: '15px' }}>
-                                            <span style={{ padding: '4px 10px', background: '#e2e8f0', borderRadius: '20px', fontSize: '0.8rem' }}>
-                                                {categories.find(c => c.id === item.category_id)?.name || 'Uncategorized'}
-                                            </span>
-                                        </td>
-                                        <td style={{ padding: '15px' }}>
-                                            {item.promo_price ? (
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.8rem' }}>₱{item.price}</span>
-                                                    <span style={{ color: '#ef4444', fontWeight: 700 }}>₱{item.promo_price}</span>
-                                                </div>
-                                            ) : <span style={{ fontWeight: 700 }}>₱{item.price}</span>}
-                                        </td>
-                                        <td style={{ padding: '15px', borderTopRightRadius: '12px', borderBottomRightRadius: '12px' }}>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button onClick={() => moveItem(item.id, 'up')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} title="Move Up"><ChevronUp size={18} /></button>
-                                                <button onClick={() => moveItem(item.id, 'down')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} title="Move Down"><ChevronDown size={18} /></button>
-                                                <button onClick={() => setEditingItem(item)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--primary)' }} title="Edit"><Edit2 size={18} /></button>
-                                                <button onClick={() => deleteItem(item.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444' }} title="Delete"><Trash2 size={18} /></button>
+                            ) : filteredItems.map(item => (
+                                <tr key={item.id} style={{ background: '#f8fafc' }}>
+                                    <td style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '15px', borderTopLeftRadius: '12px', borderBottomLeftRadius: '12px' }}>
+                                        <img src={item.image} style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                                        <div style={{ fontWeight: 600 }}>{item.name}</div>
+                                    </td>
+                                    <td style={{ padding: '15px' }}>
+                                        <span style={{ padding: '4px 10px', background: '#e2e8f0', borderRadius: '20px', fontSize: '0.8rem' }}>
+                                            {categories.find(c => c.id === item.category_id)?.name || 'Uncategorized'}
+                                        </span>
+                                    </td>
+                                    <td style={{ padding: '15px' }}>
+                                        {item.promo_price ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.8rem' }}>₱{item.price}</span>
+                                                <span style={{ color: '#ef4444', fontWeight: 700 }}>₱{item.promo_price}</span>
                                             </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
+                                        ) : <span style={{ fontWeight: 700 }}>₱{item.price}</span>}
+                                    </td>
+                                    <td style={{ padding: '15px', borderTopRightRadius: '12px', borderBottomRightRadius: '12px' }}>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button onClick={() => moveItem(item.id, 'up')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} title="Move Up"><ChevronUp size={18} /></button>
+                                            <button onClick={() => moveItem(item.id, 'down')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} title="Move Down"><ChevronDown size={18} /></button>
+                                            <button onClick={() => setEditingItem(item)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--primary)' }} title="Edit"><Edit2 size={18} /></button>
+                                            <button onClick={() => deleteItem(item.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444' }} title="Delete"><Trash2 size={18} /></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                            }
                         </tbody>
                     </table>
                 </div>
