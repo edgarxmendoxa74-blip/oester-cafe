@@ -320,7 +320,16 @@ const AdminDashboard = () => {
                                                 <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.8rem' }}>₱{item.price}</span>
                                                 <span style={{ color: '#ef4444', fontWeight: 700 }}>₱{item.promo_price}</span>
                                             </div>
-                                        ) : <span style={{ fontWeight: 700 }}>₱{item.price}</span>}
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <span style={{ fontWeight: 700 }}>₱{item.price}</span>
+                                                {item.variations && item.variations.length > 0 && (
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--primary)', background: '#fff5f5', padding: '2px 6px', borderRadius: '4px', width: 'fit-content', marginTop: '4px', fontWeight: 700 }}>
+                                                        {item.variations.length} Options
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
                                     <td style={{ padding: '15px', borderTopRightRadius: '12px', borderBottomRightRadius: '12px' }}>
                                         <div style={{ display: 'flex', gap: '8px' }}>
