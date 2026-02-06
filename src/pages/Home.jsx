@@ -495,7 +495,16 @@ Thank you!`.trim();
                                                     <span className="menu-item-price" style={{ color: '#ef4444' }}>₱{item.promo_price}</span>
                                                 </>
                                             ) : (
-                                                <span className="menu-item-price">₱{item.price}</span>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    {item.variations && item.variations.length > 0 && (
+                                                        <span className="price-start-text">Starts at</span>
+                                                    )}
+                                                    <span className="menu-item-price">
+                                                        ₱{item.variations && item.variations.length > 0
+                                                            ? Math.min(...item.variations.map(v => v.price))
+                                                            : item.price}
+                                                    </span>
+                                                </div>
                                             )}
                                         </div>
                                         <button
@@ -527,23 +536,23 @@ Thank you!`.trim();
 
                             {selectedProduct.variations && selectedProduct.variations.length > 0 && (
                                 <div style={{ marginBottom: '20px' }}>
-                                    <label style={{ fontWeight: 700, display: 'block', marginBottom: '10px' }}>Select Size/Variation</label>
-                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                    <label style={{ fontWeight: 700, display: 'block', marginBottom: '10px' }}>Select an Option</label>
+                                    <div className="variation-list">
                                         {selectedProduct.variations.map(v => (
-                                            <button
+                                            <div
                                                 key={v.name}
-                                                disabled={v.disabled}
-                                                onClick={() => setSelectionOptions({ ...selectionOptions, variation: v })}
-                                                style={{
-                                                    padding: '8px 15px', borderRadius: '10px', border: '1px solid var(--primary)',
-                                                    background: selectionOptions.variation?.name === v.name ? 'var(--primary)' : 'white',
-                                                    color: selectionOptions.variation?.name === v.name ? 'white' : 'var(--primary)',
-                                                    cursor: v.disabled ? 'not-allowed' : 'pointer',
-                                                    opacity: v.disabled ? 0.3 : 1
-                                                }}
+                                                className={`variation-option ${selectionOptions.variation?.name === v.name ? 'active' : ''} ${v.disabled ? 'disabled' : ''}`}
+                                                onClick={() => !v.disabled && setSelectionOptions({ ...selectionOptions, variation: v })}
+                                                style={{ opacity: v.disabled ? 0.5 : 1, cursor: v.disabled ? 'not-allowed' : 'pointer' }}
                                             >
-                                                {v.name} (+₱{v.price}) {v.disabled && '(Out of Stock)'}
-                                            </button>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        {selectionOptions.variation?.name === v.name && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)' }}></div>}
+                                                    </div>
+                                                    <span className="variation-name">{v.name} {v.disabled && '(Out of Stock)'}</span>
+                                                </div>
+                                                <span className="variation-price-tag">₱{v.price}</span>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
