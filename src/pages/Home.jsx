@@ -49,7 +49,7 @@ const Home = () => {
     });
 
     const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
-    const [menuLoading, setMenuLoading] = useState(true);
+    const [menuLoading, setMenuLoading] = useState(false); // Start false to show default/cached items instantly
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
@@ -111,10 +111,9 @@ const Home = () => {
                 }
                 if (savedOrderTypes) setOrderTypes(JSON.parse(savedOrderTypes));
 
-                // If we have categories and items in local storage, we can show them instantly.
-                // Otherwise, we keep menuLoading true to show the centered spinner.
-                if (savedCats && savedItems) {
-                    setMenuLoading(false);
+                // If we have no categories at all (rare), then we show the loader
+                if (categories.length === 0 && !savedCats) {
+                    setMenuLoading(true);
                 }
             } catch (err) {
                 console.error("Error loading from local storage", err);
@@ -472,7 +471,7 @@ Thank you!`.trim();
 
 
                 <div className="menu-grid">
-                    {menuLoading ? (
+                    {menuLoading && filteredItems.length === 0 ? (
                         <div className="loader-container" style={{ gridColumn: '1 / -1', minHeight: '300px' }}>
                             <div className="themed-spinner"></div>
                             <p className="loader-text">Preparing our delicious menu...</p>
