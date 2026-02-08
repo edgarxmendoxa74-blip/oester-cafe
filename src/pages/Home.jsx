@@ -28,7 +28,7 @@ const Home = () => {
     const [cart, setCart] = useState([]);
     const [items, setItems] = useState(menuItems || []);
     const [categories, setCategories] = useState(initialCategories || []);
-    const [activeCategory, setActiveCategory] = useState('oysters'); // Will update after load
+    const [activeCategory, setActiveCategory] = useState(''); // Initialize empty to force valid selection on load
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
     const [paymentSettings, setPaymentSettings] = useState([]);
@@ -53,7 +53,23 @@ const Home = () => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
-    // Store status logic
+    // Load cart from local storage
+    useEffect(() => {
+        const savedCart = localStorage.getItem('oesters_cart');
+        if (savedCart) {
+            try {
+                setCart(JSON.parse(savedCart));
+            } catch (e) {
+                console.error("Error parsing cart", e);
+            }
+        }
+    }, []);
+
+    // Save cart to local storage
+    useEffect(() => {
+        localStorage.setItem('oesters_cart', JSON.stringify(cart));
+    }, [cart]);
+
     const isStoreOpen = () => {
         if (storeSettings.manual_status === 'open') return true;
         if (storeSettings.manual_status === 'closed') return false;
@@ -92,7 +108,7 @@ const Home = () => {
                     if (Array.isArray(parsed) && parsed.length > 0) {
                         setCategories(parsed);
                         if (!activeCategory || !parsed.find(c => c.id === activeCategory)) {
-                            setActiveCategory(parsed[0].id);
+                            if (parsed[0]) setActiveCategory(parsed[0].id);
                         }
                     }
                 }
@@ -154,11 +170,14 @@ const Home = () => {
                         else finalCategories.push(remoteCat);
                     });
                 }
-                setCategories(finalCategories);
-                localStorage.setItem('categories', JSON.stringify(finalCategories));
+                const filteredCategories = finalCategories.filter(c => c.name !== 'Order Map' && c.id !== 'full-menu');
+                setCategories(filteredCategories);
+                localStorage.setItem('categories', JSON.stringify(filteredCategories));
 
-                if (!activeCategory || !finalCategories.find(c => c.id === activeCategory)) {
-                    if (finalCategories.length > 0) setActiveCategory(finalCategories[0].id);
+                if (!activeCategory || !filteredCategories.find(c => c.id === activeCategory)) {
+                    if (filteredCategories.length > 0) {
+                        setActiveCategory(filteredCategories[0].id);
+                    }
                 }
 
                 let finalItems = [...(menuItems || [])];
@@ -239,11 +258,12 @@ const Home = () => {
 
     const openProductSelection = (item) => {
         const firstVariation = (item.variations || []).find(v => !v.disabled);
+        const catName = categories.find(c => c.id === item.category_id)?.name?.toLowerCase() || '';
         const isMulti = item.allow_multiple ||
-            item.category_id?.toLowerCase().includes('milktea') ||
-            item.category_id?.toLowerCase().includes('fruit') ||
-            categories.find(c => c.id === item.category_id)?.name?.toLowerCase().includes('milk tea') ||
-            categories.find(c => c.id === item.category_id)?.name?.toLowerCase().includes('fruit');
+            catName.includes('milk tea') ||
+            catName.includes('fruit tea') ||
+            catName.includes('series') ||
+            catName.includes('milktea');
 
         setSelectedProduct(item);
         setSelectionOptions({
@@ -295,17 +315,18 @@ const Home = () => {
         const finalPrice = price + flavorsPrice + addonsPrice;
 
         if (existing) {
-            setCart(prev => prev.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1 } : i));
+            setCart(prev => prev.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + (options.quantity || 1) } : i));
         } else {
-            setCart(prev => [...prev, {
+            const newItem = {
                 ...item,
                 cartItemId,
                 selectedVariation: options.variation,
                 selectedFlavors: options.flavors,
                 selectedAddons: options.addons,
                 finalPrice,
-                quantity: 1
-            }]);
+                quantity: options.quantity || 1
+            };
+            setCart(prev => [...prev, newItem]);
         }
     };
 
@@ -706,53 +727,45 @@ Thank you!`.trim();
                                 </div>
                             )}
 
-                            <button
-                                className="btn-primary"
-                                style={{ width: '100%', padding: '15px', fontWeight: 700, fontSize: '1.1rem' }}
-                                onClick={() => addToCart(selectedProduct, selectionOptions)}
-                                disabled={(
-                                    !(selectedProduct.allow_multiple ||
-                                        selectedProduct.category_id?.toLowerCase().includes('milktea') ||
-                                        categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
-                                        categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit'))
-                                    && !selectionOptions.variation
-                                ) || (
-                                        (selectedProduct.allow_multiple ||
-                                            selectedProduct.category_id?.toLowerCase().includes('milktea') ||
-                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
-                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit'))
-                                        && selectionOptions.selectedVariations.length === 0
-                                    )}
-                            >
-                                Add to Cart - ₱{
-                                    (() => {
-                                        const isMulti = selectedProduct.allow_multiple ||
-                                            selectedProduct.category_id?.toLowerCase().includes('milktea') ||
-                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
-                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit');
+                            {(() => {
+                                const catName = categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase() || '';
+                                const isMulti = selectedProduct.allow_multiple ||
+                                    catName.includes('milk tea') ||
+                                    catName.includes('fruit tea') ||
+                                    catName.includes('series') ||
+                                    catName.includes('milktea');
 
-                                        const basePrice = Number(selectedProduct.promo_price || selectedProduct.price);
-                                        const addonsPrice = selectionOptions.addons.reduce((sum, a) => sum + Number(a.price), 0);
+                                const basePrice = Number(selectedProduct.promo_price || selectedProduct.price);
+                                const addonsPrice = selectionOptions.addons.reduce((sum, a) => sum + Number(a.price), 0);
+                                const flavorsPrice = selectionOptions.flavors.reduce((sum, fName) => {
+                                    const flavorObj = (selectedProduct.flavors || []).find(f => (typeof f === 'string' ? f : f.name) === fName);
+                                    return sum + (flavorObj?.price || 0);
+                                }, 0);
 
-                                        const flavorsPrice = selectionOptions.flavors.reduce((sum, fName) => {
-                                            const flavorObj = (selectedProduct.flavors || []).find(f => (typeof f === 'string' ? f : f.name) === fName);
-                                            return sum + (flavorObj?.price || 0);
-                                        }, 0);
+                                let totalPrice = 0;
+                                let canAdd = false;
 
-                                        if (isMulti) {
-                                            const totalVariationsPrice = selectionOptions.selectedVariations.reduce((sum, v) => sum + Number(v.price), 0);
-                                            // In multi mode, addons and constant base flavors are applied per cup?
-                                            // Let's assume addons are per variation (cup).
-                                            const totalAddonsPrice = addonsPrice * selectionOptions.selectedVariations.length;
-                                            const totalFlavorsPrice = flavorsPrice * selectionOptions.selectedVariations.length;
-                                            return totalVariationsPrice + totalAddonsPrice + totalFlavorsPrice;
-                                        } else {
-                                            const variationPrice = selectionOptions.variation ? Number(selectionOptions.variation.price) : basePrice;
-                                            return variationPrice + addonsPrice + flavorsPrice;
-                                        }
-                                    })()
+                                if (isMulti) {
+                                    const varPriceTotal = selectionOptions.selectedVariations.reduce((sum, v) => sum + Number(v.price), 0);
+                                    totalPrice = varPriceTotal + (addonsPrice + flavorsPrice) * selectionOptions.selectedVariations.length;
+                                    canAdd = selectionOptions.selectedVariations.length > 0;
+                                } else {
+                                    const varPrice = selectionOptions.variation ? Number(selectionOptions.variation.price) : basePrice;
+                                    totalPrice = varPrice + addonsPrice + flavorsPrice;
+                                    canAdd = !!(selectionOptions.variation || !selectedProduct.variations?.length);
                                 }
-                            </button>
+
+                                return (
+                                    <button
+                                        className="btn-primary"
+                                        style={{ width: '100%', padding: '18px', fontWeight: 800, fontSize: '1.2rem', marginTop: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}
+                                        onClick={() => addToCart(selectedProduct, selectionOptions)}
+                                        disabled={!canAdd}
+                                    >
+                                        Add to Cart - ₱{totalPrice}
+                                    </button>
+                                );
+                            })()}
                         </div>
                     </div>
                 )

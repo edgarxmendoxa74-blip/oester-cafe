@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS menu_items (
     promo_price DECIMAL(10, 2),
     image TEXT,
     out_of_stock BOOLEAN DEFAULT FALSE,
+    allow_multiple BOOLEAN DEFAULT FALSE,
     sort_order INTEGER DEFAULT 0,
     variations JSONB DEFAULT '[]', -- [{name, price, disabled}]
     flavors JSONB DEFAULT '[]',    -- [{name, disabled}] or [string] (for backward compatibility)

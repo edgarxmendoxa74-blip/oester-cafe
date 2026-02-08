@@ -34,8 +34,6 @@ const AdminDashboard = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('menu'); // menu, categories, orders, payment, orderTypes
     const [message, setMessage] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
 
     // --- STATE MANAGEMENT ---
     const [items, setItems] = useState(() => {
@@ -99,13 +97,34 @@ const AdminDashboard = () => {
         };
     });
 
+    // --- SYNC TO LOCAL STORAGE ---
+    useEffect(() => {
+        localStorage.setItem('menuItems', JSON.stringify(items));
+    }, [items]);
+
+    useEffect(() => {
+        localStorage.setItem('categories', JSON.stringify(categories));
+    }, [categories]);
+
+    useEffect(() => {
+        localStorage.setItem('storeSettings', JSON.stringify(storeSettings));
+    }, [storeSettings]);
+
+    useEffect(() => {
+        localStorage.setItem('orderTypes', JSON.stringify(orderTypes));
+    }, [orderTypes]);
+
+    useEffect(() => {
+        localStorage.setItem('paymentSettings', JSON.stringify(paymentSettings));
+    }, [paymentSettings]);
+
     // --- FETCH DATA FROM SUPABASE ---
     useEffect(() => {
         const fetchAdminData = async () => {
             try {
                 const { data: catData, error: catError } = await supabase.from('categories').select('*').order('sort_order', { ascending: true });
                 if (catError) throw catError;
-                if (catData) setCategories(catData);
+                if (catData) setCategories(catData.filter(c => c.name !== 'Order Map' && c.id !== 'full-menu'));
 
                 const { data: itemData, error: itemError } = await supabase.from('menu_items').select('*').order('sort_order', { ascending: true });
                 if (itemError) throw itemError;
@@ -129,8 +148,6 @@ const AdminDashboard = () => {
             } catch (err) {
                 console.error('Error fetching admin data:', err);
                 showMessage(`Error loading data: ${err.message || 'Unknown error'}`);
-            } finally {
-                setIsLoading(false);
             }
         };
         fetchAdminData();
@@ -185,6 +202,8 @@ const AdminDashboard = () => {
             }
         }, [editingItem]);
 
+        const [isProcessing, setIsProcessing] = useState(false);
+
         const handleSubmit = async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -202,29 +221,48 @@ const AdminDashboard = () => {
                 allow_multiple: formData.get('allowMultiple') === 'on'
             };
 
-            setIsSaving(true);
+            setIsProcessing(true);
             try {
                 let finalItem;
+                let result;
+
+                // Attempt save
                 if (editingItem.id === 'new') {
-                    if (!itemData.category_id) { showMessage('Please select a category first.'); return; }
-                    const { data, error } = await supabase.from('menu_items').insert([itemData]).select().single();
-                    if (error) throw error;
-                    finalItem = data;
-                    setItems([...items, finalItem]);
+                    if (!itemData.category_id) { showMessage('Please select a category first.'); setIsProcessing(false); return; }
+                    result = await supabase.from('menu_items').insert([itemData]).select().single();
                 } else {
-                    const { data, error } = await supabase.from('menu_items').update(itemData).eq('id', editingItem.id).select().single();
-                    if (error) throw error;
-                    finalItem = data;
-                    setItems(items.map(i => i.id === finalItem.id ? finalItem : i));
+                    result = await supabase.from('menu_items').update(itemData).eq('id', editingItem.id).select().single();
                 }
 
+                // Fallback for missing 'allow_multiple' column
+                if (result.error && result.error.message.includes('allow_multiple')) {
+                    console.warn("Column 'allow_multiple' missing, retrying without it...");
+                    const { allow_multiple, ...fallbackData } = itemData;
+                    if (editingItem.id === 'new') {
+                        result = await supabase.from('menu_items').insert([fallbackData]).select().single();
+                    } else {
+                        result = await supabase.from('menu_items').update(fallbackData).eq('id', editingItem.id).select().single();
+                    }
+                }
+
+                if (result.error) throw result.error;
+                finalItem = result.data;
+
+                setItems(prev => {
+                    const exists = prev.find(i => i.id === finalItem.id);
+                    if (exists) return prev.map(i => i.id === finalItem.id ? finalItem : i);
+                    return [...prev, finalItem];
+                });
+
                 setEditingItem(null);
+                setSearchTerm('');
+                setFilterCategory('all');
                 showMessage('Product saved successfully!');
             } catch (error) {
                 console.error(error);
                 showMessage(`Error saving: ${error.message}`);
             } finally {
-                setIsSaving(false);
+                setIsProcessing(false);
             }
         };
 
@@ -238,26 +276,51 @@ const AdminDashboard = () => {
         };
 
         const moveItem = async (id, direction) => {
+            if (isProcessing) return;
+
+            // Reordering should be relative to the current filtered/sorted view for USABILITY
+            // but must update the GLOBAL sort_order.
             const index = items.findIndex(i => i.id === id);
             if (index === -1) return;
-            const newIndex = direction === 'up' ? index - 1 : index + 1;
-            if (newIndex < 0 || newIndex >= items.length) return;
 
-            const newItems = [...items];
-            const [removed] = newItems.splice(index, 1);
-            newItems.splice(newIndex, 0, removed);
+            // Find items in the SAME category to move relative to them
+            const currentItem = items[index];
+            const catItems = items
+                .filter(i => i.category_id === currentItem.category_id)
+                .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-            // Re-index all items to ensure consistent sort_order
-            const updatedItems = newItems.map((item, idx) => ({ ...item, sort_order: idx }));
-            setItems(updatedItems);
+            const catIndex = catItems.findIndex(i => i.id === id);
+            const newCatIndex = direction === 'up' ? catIndex - 1 : catIndex + 1;
 
-            // Update Supabase for all items (batch update)
-            const { error } = await supabase.from('menu_items').upsert(updatedItems);
-            if (error) {
-                console.error('Error syncing order:', error);
-                showMessage('Error saving item order.');
-            } else {
-                showMessage('Item order updated!');
+            if (newCatIndex < 0 || newCatIndex >= catItems.length) return;
+
+            setIsProcessing(true);
+            try {
+                const otherItem = catItems[newCatIndex];
+                const currentOrder = currentItem.sort_order || 0;
+                const otherOrder = otherItem.sort_order || 0;
+
+                // Swap sort_orders
+                const { error } = await supabase.from('menu_items').upsert([
+                    { id: currentItem.id, sort_order: otherOrder },
+                    { id: otherItem.id, sort_order: currentOrder }
+                ]);
+
+                if (error) throw error;
+
+                // Update local state
+                setItems(prev => prev.map(item => {
+                    if (item.id === currentItem.id) return { ...item, sort_order: otherOrder };
+                    if (item.id === otherItem.id) return { ...item, sort_order: currentOrder };
+                    return item;
+                }).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
+
+                showMessage(`Moved ${direction === 'up' ? 'up' : 'down'}`);
+            } catch (err) {
+                console.error(err);
+                showMessage('Error reordering items');
+            } finally {
+                setIsProcessing(false);
             }
         };
 
@@ -300,11 +363,7 @@ const AdminDashboard = () => {
                             <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}><th style={{ padding: '10px' }}>Product</th><th style={{ padding: '10px' }}>Category</th><th style={{ padding: '10px' }}>Price</th><th style={{ padding: '10px' }}>Actions</th></tr>
                         </thead>
                         <tbody>
-                            {isLoading && filteredItems.length === 0 ? (
-                                [1, 2, 3, 4, 5].map(i => (
-                                    <tr key={i}><td colSpan="4" style={{ padding: '15px' }}><div className="skeleton" style={{ height: '50px', borderRadius: '12px' }}></div></td></tr>
-                                ))
-                            ) : filteredItems.map(item => (
+                            {filteredItems.map(item => (
                                 <tr key={item.id} style={{ background: '#f8fafc' }}>
                                     <td style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '15px', borderTopLeftRadius: '12px', borderBottomLeftRadius: '12px' }}>
                                         <img src={item.image} style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
@@ -469,8 +528,13 @@ const AdminDashboard = () => {
                         </div>
                     ))}
 
-                    <button type="submit" className={`btn-primary ${isSaving ? 'btn-loading' : ''}`} style={{ width: '100%', marginTop: '20px' }}>
-                        {isSaving ? 'Saving...' : 'Save Product'}
+                    <button
+                        type="submit"
+                        disabled={isProcessing}
+                        className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}
+                        style={{ width: '100%', marginTop: '20px' }}
+                    >
+                        {isProcessing ? 'Saving...' : 'Save Product'}
                     </button>
                 </form>
             </div>
@@ -482,13 +546,14 @@ const AdminDashboard = () => {
         const [newCat, setNewCat] = useState('');
         const [editingCatId, setEditingCatId] = useState(null);
         const [editCatName, setEditCatName] = useState('');
+        const [isProcessing, setIsProcessing] = useState(false);
 
         const addCategory = async (e) => {
             e.preventDefault();
             if (!newCat.trim()) return;
-            setIsSaving(true);
+            setIsProcessing(true);
             const { data, error } = await supabase.from('categories').insert([{ name: newCat, sort_order: categories.length }]).select().single();
-            setIsSaving(false);
+            setIsProcessing(false);
             if (error) { console.error(error); showMessage(`Error adding category: ${error.message}`); return; }
             setCategories([...categories, data]);
             setNewCat('');
@@ -502,7 +567,9 @@ const AdminDashboard = () => {
 
         const saveEdit = async (id) => {
             if (!editCatName.trim()) return;
+            setIsProcessing(true);
             const { data, error } = await supabase.from('categories').update({ name: editCatName }).eq('id', id).select().single();
+            setIsProcessing(false);
             if (error) { console.error(error); showMessage(`Error updating: ${error.message}`); return; }
             setCategories(categories.map(c => c.id === id ? data : c));
             setEditingCatId(null);
@@ -549,7 +616,9 @@ const AdminDashboard = () => {
                 <h2 style={{ marginBottom: '30px' }}>Categories Management</h2>
                 <form onSubmit={addCategory} style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
                     <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="New Category Name (e.g. Desserts)" style={{ ...inputStyle, flex: 1 }} />
-                    <button type="submit" className={`btn-primary ${isSaving ? 'btn-loading' : ''}`} style={{ padding: '10px 25px' }}>{isSaving ? 'Adding...' : 'Add Category'}</button>
+                    <button type="submit" disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`} style={{ padding: '10px 25px' }}>
+                        {isProcessing ? 'Adding...' : 'Add Category'}
+                    </button>
                 </form>
                 <div style={{ display: 'grid', gap: '15px' }}>
                     {categories.map(c => (
@@ -557,7 +626,9 @@ const AdminDashboard = () => {
                             {editingCatId === c.id ? (
                                 <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
                                     <input value={editCatName} onChange={e => setEditCatName(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-                                    <button onClick={() => saveEdit(c.id)} className="btn-primary" style={{ padding: '5px 15px' }}>Save</button>
+                                    <button onClick={() => saveEdit(c.id)} disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`} style={{ padding: '5px 15px' }}>
+                                        {isProcessing ? 'Saving...' : 'Save'}
+                                    </button>
                                     <button onClick={() => setEditingCatId(null)} style={{ border: '1px solid #cbd5e1', background: 'white', borderRadius: '10px', padding: '5px 15px' }}>Cancel</button>
                                 </div>
                             ) : (
@@ -680,6 +751,7 @@ const AdminDashboard = () => {
     const PaymentSettings = () => {
         const [editingMethodId, setEditingMethodId] = useState(null);
         const [showAddMethod, setShowAddMethod] = useState(false);
+        const [isProcessing, setIsProcessing] = useState(false);
 
         const handleSaveMethod = async (e, methodId) => {
             e.preventDefault();
@@ -689,9 +761,9 @@ const AdminDashboard = () => {
                 account_number: formData.get('accountNumber'),
                 account_name: formData.get('accountName'),
             };
-            setIsSaving(true);
+            setIsProcessing(true);
             const { data, error } = await supabase.from('payment_settings').update(updateData).eq('id', methodId).select().single();
-            setIsSaving(false);
+            setIsProcessing(false);
             if (error) { console.error(error); showMessage(`Error updating: ${error.message}`); return; }
             setPaymentSettings(paymentSettings.map(m => m.id === methodId ? data : m));
             setEditingMethodId(null);
@@ -707,9 +779,9 @@ const AdminDashboard = () => {
                 account_name: formData.get('accountName'),
                 qr_url: ''
             };
-            setIsSaving(true);
+            setIsProcessing(true);
             const { data, error } = await supabase.from('payment_settings').insert([newMethod]).select().single();
-            setIsSaving(false);
+            setIsProcessing(false);
             if (error) { console.error(error); showMessage(`Error adding: ${error.message}`); return; }
             setPaymentSettings([...paymentSettings, data]);
             setShowAddMethod(false);
@@ -744,7 +816,9 @@ const AdminDashboard = () => {
                             <input name="name" placeholder="Method Name (e.g. Bank Transfer, GCash)" required style={inputStyle} />
                             <input name="accountNumber" placeholder="Account Number" required style={inputStyle} />
                             <input name="accountName" placeholder="Account Name" required style={inputStyle} />
-                            <button type="submit" className={`btn-primary ${isSaving ? 'btn-loading' : ''}`}>{isSaving ? 'Saving...' : 'Save Method'}</button>
+                            <button type="submit" disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}>
+                                {isProcessing ? 'Saving...' : 'Save Method'}
+                            </button>
                         </form>
                     </div>
                 )}
@@ -768,7 +842,9 @@ const AdminDashboard = () => {
                                         <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, method.id)} style={inputStyle} />
                                     </div>
 
-                                    <button type="submit" className={`btn-primary ${isSaving ? 'btn-loading' : ''}`}>{isSaving ? 'Saving...' : 'Save Changes'}</button>
+                                    <button type="submit" disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}>
+                                        {isProcessing ? 'Saving...' : 'Save Changes'}
+                                    </button>
                                 </form>
                             ) : (
                                 <div>
@@ -980,6 +1056,8 @@ const AdminDashboard = () => {
 
     // --- COMPONENT: STORE GENERAL SETTINGS ---
     const StoreGeneralSettings = () => {
+        const [isProcessing, setIsProcessing] = useState(false);
+
         const handleSave = async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -992,8 +1070,11 @@ const AdminDashboard = () => {
                 manual_status: formData.get('manualStatus')
             };
 
+            setIsProcessing(true);
             const payload = storeSettings.id ? { id: storeSettings.id, ...updateData } : updateData;
             const { data, error } = await supabase.from('store_settings').upsert(payload).select().single();
+            setIsProcessing(false);
+
             if (error) {
                 console.error(error);
                 showMessage(`Error saving: ${error.message}`);
@@ -1189,7 +1270,14 @@ const AdminDashboard = () => {
                             </div>
                         </div>
                     </div>
-                    <button type="submit" className="btn-primary" style={{ marginTop: '40px', width: '100%', padding: '15px' }}>Save All Settings</button>
+                    <button
+                        type="submit"
+                        disabled={isProcessing}
+                        className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}
+                        style={{ marginTop: '40px', width: '100%', padding: '15px' }}
+                    >
+                        {isProcessing ? 'Saving All Settings...' : 'Save All Settings'}
+                    </button>
                 </form>
             </div>
         );
@@ -1199,9 +1287,6 @@ const AdminDashboard = () => {
     // --- MAIN RENDER ---
     return (
         <div className="admin-layout" style={{ display: 'flex', minHeight: '100vh', background: '#f1f5f9', fontFamily: 'Inter' }}>
-            {/* Top Loading Bar */}
-            {(isLoading || isSaving) && <div className="top-loader top-loader-anim"></div>}
-
             {/* Sidebar */}
             <aside style={{ width: '260px', background: 'var(--primary)', color: 'white', padding: '30px 20px', position: 'fixed', height: '100vh' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '50px', paddingLeft: '10px' }}>
