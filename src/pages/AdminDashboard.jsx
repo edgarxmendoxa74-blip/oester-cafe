@@ -4,119 +4,106 @@ import { supabase } from '../supabaseClient';
 import {
     LayoutDashboard,
     LogOut,
-    Save,
     Plus,
-    Trash2,
-    Edit2,
     Package,
     Tag,
     Settings,
-    ChevronDown,
-    ChevronUp,
-    Image as ImageIcon,
     X,
     List,
     CreditCard,
-    ShoppingBag,
-    Copy,
-    Clock,
-    MapPin,
-    Phone,
-    Printer,
-    FileText,
-    Camera,
-    Utensils,
-    Truck
+    ShoppingBag
 } from 'lucide-react';
 import { categories as initialCategories, menuItems as initialItems } from '../data/MenuData';
 
+// Sub-components
+import MenuManager from '../components/admin/MenuManager';
+import CategoryManager from '../components/admin/CategoryManager';
+import OrderHistory from '../components/admin/OrderHistory';
+import OrderTypeManager from '../components/admin/OrderTypeManager';
+import PaymentSettings from '../components/admin/PaymentSettings';
+import StoreGeneralSettings from '../components/admin/StoreGeneralSettings';
+
 const AdminDashboard = () => {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('menu'); // menu, categories, orders, payment, orderTypes
+    const [activeTab, setActiveTab] = useState('menu'); // menu, categories, orders, payment, orderTypes, settings
     const [message, setMessage] = useState('');
 
     // --- STATE MANAGEMENT ---
-    const [items, setItems] = useState(() => {
-        const saved = localStorage.getItem('menuItems');
-        return saved ? JSON.parse(saved) : initialItems;
-    });
 
-    const [categories, setCategories] = useState(() => {
-        const saved = localStorage.getItem('categories');
-        return saved ? JSON.parse(saved) : initialCategories;
-    });
-
-    const [orders, setOrders] = useState(() => {
-        const saved = localStorage.getItem('orders');
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [orderTypes, setOrderTypes] = useState(() => {
-        const saved = localStorage.getItem('orderTypes');
-        return saved ? JSON.parse(saved) : [
-            { id: 'dine-in', name: 'Dine-in' },
-            { id: 'pickup', name: 'Pickup' },
-            { id: 'delivery', name: 'Delivery' }
-        ];
-    });
-
-    const [paymentSettings, setPaymentSettings] = useState(() => {
-        const saved = localStorage.getItem('paymentSettings');
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            if (!Array.isArray(parsed)) {
-                // Migration for existing users
-                return [
-                    { id: 'gcash', name: 'GCash', accountNumber: parsed.gcash?.number || '', accountName: parsed.gcash?.name || '', qrUrl: parsed.gcash?.qrUrl || '' },
-                    { id: 'paymaya', name: 'PayMaya', accountNumber: parsed.paymaya?.number || '', accountName: parsed.paymaya?.name || '', qrUrl: parsed.paymaya?.qrUrl || '' }
-                ];
-            }
-            return parsed;
+    // Helper for safe localStorage access
+    const safeGetItem = (key, fallback) => {
+        try {
+            const saved = localStorage.getItem(key);
+            return saved ? JSON.parse(saved) : fallback;
+        } catch (e) {
+            console.error(`Error reading ${key} from localStorage`, e);
+            return fallback;
         }
-        return [
-            { id: 'gcash', name: 'GCash', accountNumber: '', accountName: '', qrUrl: '' },
-            { id: 'paymaya', name: 'PayMaya', accountNumber: '', accountName: '', qrUrl: '' }
-        ];
-    });
+    };
 
-    const [storeSettings, setStoreSettings] = useState(() => {
-        const saved = localStorage.getItem('storeSettings');
-        return saved ? JSON.parse(saved) : {
-            manual_status: 'auto', // auto, open, closed
-            open_time: '10:00',
-            close_time: '01:00',
-            store_name: '',
-            address: 'Poblacion, El Nido, Palawan',
-            contact: '09563713967',
-            logo_url: '',
-            banner_images: [
-                'https://images.unsplash.com/photo-1517701604599-bb29b565094d?auto=format&fit=crop&w=1200&q=80',
-                'https://images.unsplash.com/photo-1541167760496-162955ed8a9f?auto=format&fit=crop&w=1200&q=80',
-                'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80'
-            ]
-        };
-    });
+    const safeSetItem = (key, value, sanitizer = null) => {
+        try {
+            const valToStore = sanitizer ? sanitizer(value) : value;
+            localStorage.setItem(key, JSON.stringify(valToStore));
+        } catch (e) {
+            console.warn(`Error writing ${key} to localStorage`, e);
+        }
+    };
+
+    // Smart sanitizer to prevent QuotaExceededError
+    // Strips out large Base64 images from local cache, keeping only text/URLs
+    const sanitizeItems = (items) => {
+        if (!Array.isArray(items)) return items;
+        return items.map(item => {
+            const isBase64 = typeof item.image === 'string' && item.image.startsWith('data:');
+            // If it's a huge base64 string, don't cache it locally. Use placeholder or keep it if small.
+            // 2000 chars is roughly 1.5KB. Most base64 images are 50KB+.
+            if (isBase64 && item.image.length > 2000) {
+                return { ...item, image: null }; // or a lightweight placeholder
+            }
+            return item;
+        });
+    };
+
+    // Logic: Load cached (sanitized) data first for instant render, then let Supabase update with full images.
+    const [items, setItems] = useState(() => safeGetItem('menuItems', initialItems));
+    const [categories, setCategories] = useState(() => safeGetItem('categories', initialCategories));
+    const [orders, setOrders] = useState(() => safeGetItem('orders', []));
+
+    const [orderTypes, setOrderTypes] = useState(() => safeGetItem('orderTypes', [
+        { id: 'dine-in', name: 'Dine-in' },
+        { id: 'pickup', name: 'Pickup' },
+        { id: 'delivery', name: 'Delivery' }
+    ]));
+
+    const [paymentSettings, setPaymentSettings] = useState(() => safeGetItem('paymentSettings', [
+        { id: 'gcash', name: 'GCash', accountNumber: '', accountName: '', qrUrl: '' },
+        { id: 'paymaya', name: 'PayMaya', accountNumber: '', accountName: '', qrUrl: '' }
+    ]));
+
+    const [storeSettings, setStoreSettings] = useState(() => safeGetItem('storeSettings', {
+        manual_status: 'auto', // auto, open, closed
+        open_time: '10:00',
+        close_time: '01:00',
+        store_name: '',
+        address: 'Poblacion, El Nido, Palawan',
+        contact: '09563713967',
+        logo_url: '',
+        banner_images: [
+            'https://images.unsplash.com/photo-1517701604599-bb29b565094d?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1541167760496-162955ed8a9f?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80'
+        ]
+    }));
 
     // --- SYNC TO LOCAL STORAGE ---
-    useEffect(() => {
-        localStorage.setItem('menuItems', JSON.stringify(items));
-    }, [items]);
-
-    useEffect(() => {
-        localStorage.setItem('categories', JSON.stringify(categories));
-    }, [categories]);
-
-    useEffect(() => {
-        localStorage.setItem('storeSettings', JSON.stringify(storeSettings));
-    }, [storeSettings]);
-
-    useEffect(() => {
-        localStorage.setItem('orderTypes', JSON.stringify(orderTypes));
-    }, [orderTypes]);
-
-    useEffect(() => {
-        localStorage.setItem('paymentSettings', JSON.stringify(paymentSettings));
-    }, [paymentSettings]);
+    // We sanitize heavy items to avoid crashing the browser storage
+    useEffect(() => { safeSetItem('menuItems', items, sanitizeItems); }, [items]);
+    useEffect(() => { safeSetItem('categories', categories); }, [categories]);
+    useEffect(() => { safeSetItem('orders', orders); }, [orders]);
+    useEffect(() => { safeSetItem('storeSettings', storeSettings); }, [storeSettings]);
+    useEffect(() => { safeSetItem('orderTypes', orderTypes); }, [orderTypes]);
+    useEffect(() => { safeSetItem('paymentSettings', paymentSettings); }, [paymentSettings]);
 
     // --- FETCH DATA FROM SUPABASE ---
     useEffect(() => {
@@ -154,27 +141,6 @@ const AdminDashboard = () => {
     }, []);
 
     // --- HELPERS ---
-
-    // --- HELPER FUNC ---
-    const handleFileUpload = async (e, methodId) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const qr_url = reader.result;
-                const { error } = await supabase.from('payment_settings').update({ qr_url }).eq('id', methodId);
-                if (error) {
-                    console.error(error);
-                    showMessage(`Error saving QR code: ${error.message}`);
-                    return;
-                }
-                setPaymentSettings(prev => prev.map(m => m.id === methodId ? { ...m, qr_url } : m));
-                showMessage('QR code updated!');
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
     const showMessage = (msg) => {
         setMessage(msg);
         setTimeout(() => setMessage(''), 3000);
@@ -184,1105 +150,6 @@ const AdminDashboard = () => {
         localStorage.removeItem('admin_bypass');
         navigate('/admin');
     };
-
-    // --- COMPONENT: MENU MANAGER ---
-    const MenuManager = () => {
-        const [editingItem, setEditingItem] = useState(null);
-        const [searchTerm, setSearchTerm] = useState('');
-        const [filterCategory, setFilterCategory] = useState('all');
-        const [tempVariations, setTempVariations] = useState([]);
-        const [tempFlavors, setTempFlavors] = useState([]);
-        const [tempAddons, setTempAddons] = useState([]);
-
-        useEffect(() => {
-            if (editingItem) {
-                setTempVariations(editingItem.variations || []);
-                setTempFlavors(editingItem.flavors || []);
-                setTempAddons(editingItem.addons || []);
-            }
-        }, [editingItem]);
-
-        const [isProcessing, setIsProcessing] = useState(false);
-
-        const handleSubmit = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const itemData = {
-                name: formData.get('name'),
-                description: formData.get('description'),
-                price: Number(formData.get('price')),
-                promo_price: formData.get('promoPrice') ? Number(formData.get('promoPrice')) : null,
-                category_id: formData.get('categoryId'),
-                image: editingItem.image || 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=500&q=80',
-                variations: tempVariations,
-                flavors: tempFlavors,
-                addons: tempAddons,
-                out_of_stock: formData.get('outOfStock') === 'on',
-                allow_multiple: formData.get('allowMultiple') === 'on'
-            };
-
-            setIsProcessing(true);
-            try {
-                let finalItem;
-                let result;
-
-                // Attempt save
-                if (editingItem.id === 'new') {
-                    if (!itemData.category_id) { showMessage('Please select a category first.'); setIsProcessing(false); return; }
-                    result = await supabase.from('menu_items').insert([itemData]).select().single();
-                } else {
-                    result = await supabase.from('menu_items').update(itemData).eq('id', editingItem.id).select().single();
-                }
-
-                // Fallback for missing 'allow_multiple' column
-                if (result.error && result.error.message.includes('allow_multiple')) {
-                    console.warn("Column 'allow_multiple' missing, retrying without it...");
-                    const { allow_multiple, ...fallbackData } = itemData;
-                    if (editingItem.id === 'new') {
-                        result = await supabase.from('menu_items').insert([fallbackData]).select().single();
-                    } else {
-                        result = await supabase.from('menu_items').update(fallbackData).eq('id', editingItem.id).select().single();
-                    }
-                }
-
-                if (result.error) throw result.error;
-                finalItem = result.data;
-
-                setItems(prev => {
-                    const exists = prev.find(i => i.id === finalItem.id);
-                    if (exists) return prev.map(i => i.id === finalItem.id ? finalItem : i);
-                    return [...prev, finalItem];
-                });
-
-                setEditingItem(null);
-                setSearchTerm('');
-                setFilterCategory('all');
-                showMessage('Product saved successfully!');
-            } catch (error) {
-                console.error(error);
-                showMessage(`Error saving: ${error.message}`);
-            } finally {
-                setIsProcessing(false);
-            }
-        };
-
-        const deleteItem = async (id) => {
-            if (window.confirm('Delete this product?')) {
-                const { error } = await supabase.from('menu_items').delete().eq('id', id);
-                if (error) { console.error(error); showMessage(`Error deleting: ${error.message}`); return; }
-                setItems(items.filter(i => i.id !== id));
-                showMessage('Product deleted.');
-            }
-        };
-
-        const moveItem = async (id, direction) => {
-            if (isProcessing) return;
-
-            // Reordering should be relative to the current filtered/sorted view for USABILITY
-            // but must update the GLOBAL sort_order.
-            const index = items.findIndex(i => i.id === id);
-            if (index === -1) return;
-
-            // Find items in the SAME category to move relative to them
-            const currentItem = items[index];
-            const catItems = items
-                .filter(i => i.category_id === currentItem.category_id)
-                .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-
-            const catIndex = catItems.findIndex(i => i.id === id);
-            const newCatIndex = direction === 'up' ? catIndex - 1 : catIndex + 1;
-
-            if (newCatIndex < 0 || newCatIndex >= catItems.length) return;
-
-            setIsProcessing(true);
-            try {
-                const otherItem = catItems[newCatIndex];
-                const currentOrder = currentItem.sort_order || 0;
-                const otherOrder = otherItem.sort_order || 0;
-
-                // Swap sort_orders
-                const { error } = await supabase.from('menu_items').upsert([
-                    { id: currentItem.id, sort_order: otherOrder },
-                    { id: otherItem.id, sort_order: currentOrder }
-                ]);
-
-                if (error) throw error;
-
-                // Update local state
-                setItems(prev => prev.map(item => {
-                    if (item.id === currentItem.id) return { ...item, sort_order: otherOrder };
-                    if (item.id === otherItem.id) return { ...item, sort_order: currentOrder };
-                    return item;
-                }).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
-
-                showMessage(`Moved ${direction === 'up' ? 'up' : 'down'}`);
-            } catch (err) {
-                console.error(err);
-                showMessage('Error reordering items');
-            } finally {
-                setIsProcessing(false);
-            }
-        };
-
-        const filteredItems = items.filter(item => {
-            const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesCategory = filterCategory === 'all' || item.category_id === filterCategory;
-            return matchesSearch && matchesCategory;
-        });
-
-        // Render List
-        if (!editingItem) return (
-            <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', flexWrap: 'wrap', gap: '20px' }}>
-                    <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Menu Items</h2>
-                    <div style={{ display: 'flex', gap: '10px', flex: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <input
-                            type="text"
-                            placeholder="Search products..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            style={{ ...inputStyle, width: '250px' }}
-                        />
-                        <select
-                            value={filterCategory}
-                            onChange={(e) => setFilterCategory(e.target.value)}
-                            style={{ ...inputStyle, width: '180px' }}
-                        >
-                            <option value="all">All Categories</option>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <button onClick={() => setEditingItem({ id: 'new', category_id: categories[0]?.id })} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '12px' }}>
-                            <Plus size={18} /> Add Product
-                        </button>
-                    </div>
-                </div>
-
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 10px' }}>
-                        <thead>
-                            <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}><th style={{ padding: '10px' }}>Product</th><th style={{ padding: '10px' }}>Category</th><th style={{ padding: '10px' }}>Price</th><th style={{ padding: '10px' }}>Actions</th></tr>
-                        </thead>
-                        <tbody>
-                            {filteredItems.map(item => (
-                                <tr key={item.id} style={{ background: '#f8fafc' }}>
-                                    <td style={{ padding: '15px', display: 'flex', alignItems: 'center', gap: '15px', borderTopLeftRadius: '12px', borderBottomLeftRadius: '12px' }}>
-                                        <img src={item.image} style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
-                                        <div style={{ fontWeight: 600 }}>{item.name}</div>
-                                    </td>
-                                    <td style={{ padding: '15px' }}>
-                                        <span style={{ padding: '4px 10px', background: '#e2e8f0', borderRadius: '20px', fontSize: '0.8rem' }}>
-                                            {categories.find(c => c.id === item.category_id)?.name || 'Uncategorized'}
-                                        </span>
-                                    </td>
-                                    <td style={{ padding: '15px' }}>
-                                        {item.promo_price ? (
-                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.8rem' }}>₱{item.price}</span>
-                                                <span style={{ color: '#ef4444', fontWeight: 700 }}>₱{item.promo_price}</span>
-                                            </div>
-                                        ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <span style={{ fontWeight: 700 }}>₱{item.price}</span>
-                                                {item.variations && item.variations.length > 0 && (
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--primary)', background: '#fff5f5', padding: '2px 6px', borderRadius: '4px', width: 'fit-content', marginTop: '4px', fontWeight: 700 }}>
-                                                        {item.variations.length} Options
-                                                    </span>
-                                                )}
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td style={{ padding: '15px', borderTopRightRadius: '12px', borderBottomRightRadius: '12px' }}>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <button onClick={() => moveItem(item.id, 'up')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} title="Move Up"><ChevronUp size={18} /></button>
-                                            <button onClick={() => moveItem(item.id, 'down')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} title="Move Down"><ChevronDown size={18} /></button>
-                                            <button onClick={() => setEditingItem(item)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--primary)' }} title="Edit"><Edit2 size={18} /></button>
-                                            <button onClick={() => deleteItem(item.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444' }} title="Delete"><Trash2 size={18} /></button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        );
-
-        // Render Editor (Simplified for brevity but functional)
-        return (
-            <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                    <h3>{editingItem.id === 'new' ? 'New Product' : 'Edit Product'}</h3>
-                    <button onClick={() => setEditingItem(null)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X /></button>
-                </div>
-                <form onSubmit={handleSubmit}>
-                    <div style={{ display: 'grid', gap: '15px', marginBottom: '20px' }}>
-                        <input name="name" defaultValue={editingItem.name} placeholder="Product Name" required style={inputStyle} />
-                        <textarea name="description" defaultValue={editingItem.description} placeholder="Description" style={inputStyle} />
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                            <input name="price" type="number" defaultValue={editingItem.price} placeholder="Price" required style={inputStyle} />
-                            <input name="promoPrice" type="number" defaultValue={editingItem.promo_price} placeholder="Promo Price (Optional)" style={inputStyle} />
-                        </div>
-                        <select name="categoryId" defaultValue={editingItem.category_id} style={inputStyle}>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <label style={{ fontWeight: 600 }}>Product Image</label>
-                            {editingItem.image && <img src={editingItem.image} style={{ width: '100px', height: '100px', borderRadius: '12px', objectFit: 'cover' }} />}
-                            <input type="file" accept="image/*" onChange={(e) => {
-                                const file = e.target.files[0];
-                                if (file) {
-                                    const reader = new FileReader();
-                                    reader.onloadend = () => setEditingItem({ ...editingItem, image: reader.result });
-                                    reader.readAsDataURL(file);
-                                }
-                            }} style={inputStyle} />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <input name="outOfStock" type="checkbox" defaultChecked={editingItem.out_of_stock} style={{ width: '20px', height: '20px' }} />
-                                <label style={{ fontWeight: 600 }}>Out of Stock</label>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <input name="allowMultiple" type="checkbox" defaultChecked={editingItem.allow_multiple} style={{ width: '20px', height: '20px' }} />
-                                <label style={{ fontWeight: 600 }}>Allow Multiple Flavors/Variations</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Variations */}
-                    <SectionLabel title="Variations" onAdd={() => setTempVariations([...tempVariations, { name: 'Size', price: 0 }])} />
-                    {tempVariations.map((v, i) => (
-                        <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
-                            <input value={v.name} onChange={e => { const n = [...tempVariations]; n[i].name = e.target.value; setTempVariations(n); }} placeholder="Name" style={inputStyle} />
-                            <input type="number" value={v.price} onChange={e => { const n = [...tempVariations]; n[i].price = Number(e.target.value); setTempVariations(n); }} placeholder="Price" style={inputStyle} />
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                                <input type="checkbox" checked={v.disabled} onChange={e => { const n = [...tempVariations]; n[i].disabled = e.target.checked; setTempVariations(n); }} />
-                                <label style={{ fontSize: '0.75rem' }}>Disabled</label>
-                            </div>
-                            <button type="button" onClick={() => setTempVariations(tempVariations.filter((_, idx) => idx !== i))} style={{ color: 'red', border: 'none', background: 'none' }}><X size={18} /></button>
-                        </div>
-                    ))}
-
-                    {/* Flavors */}
-                    <SectionLabel title="Flavors" onAdd={() => setTempFlavors([...tempFlavors, { name: '', price: 0, disabled: false }])} />
-                    {tempFlavors.map((f, i) => {
-                        const name = typeof f === 'string' ? f : f.name;
-                        const price = typeof f === 'object' ? (f.price || 0) : 0;
-                        const disabled = typeof f === 'object' ? f.disabled : false;
-                        return (
-                            <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
-                                <input
-                                    value={name}
-                                    onChange={e => {
-                                        const n = [...tempFlavors];
-                                        if (typeof n[i] === 'string') n[i] = { name: e.target.value, price: 0, disabled: false };
-                                        else n[i] = { ...n[i], name: e.target.value };
-                                        setTempFlavors(n);
-                                    }}
-                                    placeholder="Flavor Name"
-                                    style={inputStyle}
-                                />
-                                <input
-                                    type="number"
-                                    value={price}
-                                    onChange={e => {
-                                        const n = [...tempFlavors];
-                                        const p = Number(e.target.value);
-                                        if (typeof n[i] === 'string') n[i] = { name: n[i], price: p, disabled: false };
-                                        else n[i] = { ...n[i], price: p };
-                                        setTempFlavors(n);
-                                    }}
-                                    placeholder="Price"
-                                    style={{ ...inputStyle, width: '100px' }}
-                                />
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={disabled}
-                                        onChange={e => {
-                                            const n = [...tempFlavors];
-                                            if (typeof n[i] === 'string') n[i] = { name: n[i], price: 0, disabled: e.target.checked };
-                                            else n[i] = { ...n[i], disabled: e.target.checked };
-                                            setTempFlavors(n);
-                                        }}
-                                    />
-                                    <label style={{ fontSize: '0.75rem' }}>Disabled</label>
-                                </div>
-                                <button type="button" onClick={() => setTempFlavors(tempFlavors.filter((_, idx) => idx !== i))} style={{ color: 'red', border: 'none', background: 'none' }}><X size={18} /></button>
-                            </div>
-                        );
-                    })}
-
-                    {/* Addons */}
-                    <SectionLabel title="Add-ons" onAdd={() => setTempAddons([...tempAddons, { name: 'Addon', price: 0 }])} />
-                    {tempAddons.map((v, i) => (
-                        <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
-                            <input value={v.name} onChange={e => { const n = [...tempAddons]; n[i].name = e.target.value; setTempAddons(n); }} placeholder="Name" style={inputStyle} />
-                            <input type="number" value={v.price} onChange={e => { const n = [...tempAddons]; n[i].price = Number(e.target.value); setTempAddons(n); }} placeholder="Price" style={inputStyle} />
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                                <input type="checkbox" checked={v.disabled} onChange={e => { const n = [...tempAddons]; n[i].disabled = e.target.checked; setTempAddons(n); }} />
-                                <label style={{ fontSize: '0.75rem' }}>Disabled</label>
-                            </div>
-                            <button type="button" onClick={() => setTempAddons(tempAddons.filter((_, idx) => idx !== i))} style={{ color: 'red', border: 'none', background: 'none' }}><X size={18} /></button>
-                        </div>
-                    ))}
-
-                    <button
-                        type="submit"
-                        disabled={isProcessing}
-                        className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}
-                        style={{ width: '100%', marginTop: '20px' }}
-                    >
-                        {isProcessing ? 'Saving...' : 'Save Product'}
-                    </button>
-                </form>
-            </div>
-        );
-    };
-
-    // --- COMPONENT: CATEGORY MANAGER ---
-    const CategoryManager = () => {
-        const [newCat, setNewCat] = useState('');
-        const [editingCatId, setEditingCatId] = useState(null);
-        const [editCatName, setEditCatName] = useState('');
-        const [isProcessing, setIsProcessing] = useState(false);
-
-        const addCategory = async (e) => {
-            e.preventDefault();
-            if (!newCat.trim()) return;
-            setIsProcessing(true);
-            const { data, error } = await supabase.from('categories').insert([{ name: newCat, sort_order: categories.length }]).select().single();
-            setIsProcessing(false);
-            if (error) { console.error(error); showMessage(`Error adding category: ${error.message}`); return; }
-            setCategories([...categories, data]);
-            setNewCat('');
-            showMessage('Category added!');
-        };
-
-        const startEdit = (cat) => {
-            setEditingCatId(cat.id);
-            setEditCatName(cat.name);
-        };
-
-        const saveEdit = async (id) => {
-            if (!editCatName.trim()) return;
-            setIsProcessing(true);
-            const { data, error } = await supabase.from('categories').update({ name: editCatName }).eq('id', id).select().single();
-            setIsProcessing(false);
-            if (error) { console.error(error); showMessage(`Error updating: ${error.message}`); return; }
-            setCategories(categories.map(c => c.id === id ? data : c));
-            setEditingCatId(null);
-            showMessage('Category updated!');
-        };
-
-        const moveCategory = async (id, direction) => {
-            const index = categories.findIndex(c => c.id === id);
-            if (index === -1) return;
-            const newIndex = direction === 'up' ? index - 1 : index + 1;
-            if (newIndex < 0 || newIndex >= categories.length) return;
-
-            const newCats = [...categories];
-            const [removed] = newCats.splice(index, 1);
-            newCats.splice(newIndex, 0, removed);
-
-            const updatedCats = newCats.map((cat, idx) => ({ ...cat, sort_order: idx }));
-            setCategories(updatedCats);
-
-            const { error } = await supabase.from('categories').upsert(updatedCats);
-            if (error) {
-                console.error('Error syncing order:', error);
-                showMessage('Error saving category order.');
-            } else {
-                showMessage('Category order updated!');
-            }
-        };
-
-        const deleteCategory = async (id) => {
-            if (items.some(i => i.category_id === id)) {
-                alert('Cannot delete category because it has products.');
-                return;
-            }
-            if (window.confirm('Delete category?')) {
-                const { error } = await supabase.from('categories').delete().eq('id', id);
-                if (error) { console.error(error); showMessage(`Error deleting: ${error.message}`); return; }
-                setCategories(categories.filter(c => c.id !== id));
-                showMessage('Category deleted.');
-            }
-        };
-
-        return (
-            <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
-                <h2 style={{ marginBottom: '30px' }}>Categories Management</h2>
-                <form onSubmit={addCategory} style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
-                    <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="New Category Name (e.g. Desserts)" style={{ ...inputStyle, flex: 1 }} />
-                    <button type="submit" disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`} style={{ padding: '10px 25px' }}>
-                        {isProcessing ? 'Adding...' : 'Add Category'}
-                    </button>
-                </form>
-                <div style={{ display: 'grid', gap: '15px' }}>
-                    {categories.map(c => (
-                        <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', background: '#f8fafc', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
-                            {editingCatId === c.id ? (
-                                <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
-                                    <input value={editCatName} onChange={e => setEditCatName(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-                                    <button onClick={() => saveEdit(c.id)} disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`} style={{ padding: '5px 15px' }}>
-                                        {isProcessing ? 'Saving...' : 'Save'}
-                                    </button>
-                                    <button onClick={() => setEditingCatId(null)} style={{ border: '1px solid #cbd5e1', background: 'white', borderRadius: '10px', padding: '5px 15px' }}>Cancel</button>
-                                </div>
-                            ) : (
-                                <>
-                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                        <span style={{ fontWeight: 700, fontSize: '1.1rem' }}>{c.name}</span>
-                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{items.filter(i => i.category_id === c.id).length} products</span>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
-                                        <button onClick={() => moveCategory(c.id, 'up')} style={{ color: 'var(--text-muted)', border: 'none', background: 'none', cursor: 'pointer' }} title="Move Up"><ChevronUp size={20} /></button>
-                                        <button onClick={() => moveCategory(c.id, 'down')} style={{ color: 'var(--text-muted)', border: 'none', background: 'none', cursor: 'pointer' }} title="Move Down"><ChevronDown size={20} /></button>
-                                        <button onClick={() => startEdit(c)} style={{ color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer' }} title="Edit"><Edit2 size={20} /></button>
-                                        <button onClick={() => deleteCategory(c.id)} style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }} title="Delete"><Trash2 size={20} /></button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
-
-    // --- COMPONENT: ORDER TYPE MANAGER ---
-    const OrderTypeManager = () => {
-        const FIXED_TYPES = [
-            { id: 'dine-in', name: 'Dine-in', defaultActive: true },
-            { id: 'pickup', name: 'Take Out', defaultActive: true },
-            { id: 'delivery', name: 'Delivery', defaultActive: true }
-        ];
-
-        const [localTypes, setLocalTypes] = useState([]);
-
-        useEffect(() => {
-            // Merge fixed types with db state
-            const merged = FIXED_TYPES.map(ft => {
-                const existing = orderTypes.find(t => t.id === ft.id);
-                return existing ? existing : { ...ft, is_active: ft.defaultActive };
-            });
-            setLocalTypes(merged);
-        }, [orderTypes]);
-
-        const toggleType = async (type) => {
-            const newStatus = !type.is_active;
-
-            // Optimistic update
-            const updated = localTypes.map(t => t.id === type.id ? { ...t, is_active: newStatus, name: type.name } : t);
-            setLocalTypes(updated);
-            setOrderTypes(updated);
-
-            // Update DB
-            const { error } = await supabase.from('order_types').upsert({
-                id: type.id,
-                name: type.name, // Ensure name is saved (e.g. "Take Out")
-                is_active: newStatus
-            });
-
-            if (error) {
-                console.error(error);
-                showMessage(`Error updating: ${error.message}`);
-                // Revert on error would go here
-            } else {
-                showMessage(`${type.name} is now ${newStatus ? 'Active' : 'Inactive'}`);
-            }
-        };
-
-        return (
-            <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
-                <h2 style={{ marginBottom: '10px' }}>Order Types Management</h2>
-                <p style={{ color: 'var(--text-muted)', marginBottom: '30px' }}>Manage the availability of service options.</p>
-
-                <div style={{ display: 'grid', gap: '15px' }}>
-                    {localTypes.map(t => (
-                        <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', background: '#f8fafc', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                <div style={{
-                                    width: '40px', height: '40px', borderRadius: '10px',
-                                    background: t.is_active ? 'var(--primary)' : '#cbd5e1',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: 'white'
-                                }}>
-                                    {t.id === 'dine-in' && <Utensils size={20} />}
-                                    {t.id === 'pickup' && <ShoppingBag size={20} />}
-                                    {t.id === 'delivery' && <Truck size={20} />}
-                                </div>
-                                <div>
-                                    <span style={{ fontWeight: 700, fontSize: '1.1rem', display: 'block' }}>{t.name}</span>
-                                    <span style={{ fontSize: '0.85rem', color: t.is_active ? '#166534' : 'var(--text-muted)' }}>
-                                        {t.is_active ? 'Currently Available' : 'Unavailable'}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px', cursor: 'pointer' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={t.is_active !== false}
-                                    onChange={() => toggleType(t)}
-                                    style={{ opacity: 0, width: 0, height: 0 }}
-                                />
-                                <span style={{
-                                    position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                                    backgroundColor: t.is_active ? 'var(--primary)' : '#ccc',
-                                    transition: '.4s', borderRadius: '34px'
-                                }}></span>
-                                <span style={{
-                                    position: 'absolute', content: '""', height: '20px', width: '20px', left: '3px', bottom: '3px',
-                                    backgroundColor: 'white', transition: '.4s', borderRadius: '50%',
-                                    transform: t.is_active ? 'translateX(24px)' : 'translateX(0)'
-                                }}></span>
-                            </label>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
-
-    // --- COMPONENT: PAYMENT SETTINGS ---
-    const PaymentSettings = () => {
-        const [editingMethodId, setEditingMethodId] = useState(null);
-        const [showAddMethod, setShowAddMethod] = useState(false);
-        const [isProcessing, setIsProcessing] = useState(false);
-
-        const handleSaveMethod = async (e, methodId) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const updateData = {
-                name: formData.get('name'),
-                account_number: formData.get('accountNumber'),
-                account_name: formData.get('accountName'),
-            };
-            setIsProcessing(true);
-            const { data, error } = await supabase.from('payment_settings').update(updateData).eq('id', methodId).select().single();
-            setIsProcessing(false);
-            if (error) { console.error(error); showMessage(`Error updating: ${error.message}`); return; }
-            setPaymentSettings(paymentSettings.map(m => m.id === methodId ? data : m));
-            setEditingMethodId(null);
-            showMessage('Payment method updated!');
-        };
-
-        const handleAddMethod = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const newMethod = {
-                name: formData.get('name'),
-                account_number: formData.get('accountNumber'),
-                account_name: formData.get('accountName'),
-                qr_url: ''
-            };
-            setIsProcessing(true);
-            const { data, error } = await supabase.from('payment_settings').insert([newMethod]).select().single();
-            setIsProcessing(false);
-            if (error) { console.error(error); showMessage(`Error adding: ${error.message}`); return; }
-            setPaymentSettings([...paymentSettings, data]);
-            setShowAddMethod(false);
-            showMessage('Payment method added!');
-        };
-
-        const deleteMethod = async (id) => {
-            if (window.confirm('Delete this payment method?')) {
-                const { error } = await supabase.from('payment_settings').delete().eq('id', id);
-                if (error) { console.error(error); showMessage(`Error deleting: ${error.message}`); return; }
-                setPaymentSettings(paymentSettings.filter(m => m.id !== id));
-                showMessage('Payment method deleted.');
-            }
-        };
-
-        return (
-            <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-                    <h2 style={{ margin: 0 }}>Payment Methods Management</h2>
-                    <button onClick={() => setShowAddMethod(true)} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '12px' }}>
-                        <Plus size={18} /> Add Method
-                    </button>
-                </div>
-
-                {showAddMethod && (
-                    <div style={{ background: '#f8fafc', padding: '25px', borderRadius: '15px', border: '1px solid #e2e8f0', marginBottom: '30px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                            <h3 style={{ margin: 0 }}>Add New Payment Method</h3>
-                            <button onClick={() => setShowAddMethod(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} /></button>
-                        </div>
-                        <form onSubmit={handleAddMethod} style={{ display: 'grid', gap: '15px' }}>
-                            <input name="name" placeholder="Method Name (e.g. Bank Transfer, GCash)" required style={inputStyle} />
-                            <input name="accountNumber" placeholder="Account Number" required style={inputStyle} />
-                            <input name="accountName" placeholder="Account Name" required style={inputStyle} />
-                            <button type="submit" disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}>
-                                {isProcessing ? 'Saving...' : 'Save Method'}
-                            </button>
-                        </form>
-                    </div>
-                )}
-
-                <div style={{ display: 'grid', gap: '20px' }}>
-                    {paymentSettings.map(method => (
-                        <div key={method.id} style={{ background: '#f8fafc', padding: '25px', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
-                            {editingMethodId === method.id ? (
-                                <form onSubmit={(e) => handleSaveMethod(e, method.id)} style={{ display: 'grid', gap: '15px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                                        <h3 style={{ margin: 0 }}>Edit {method.name}</h3>
-                                        <button type="button" onClick={() => setEditingMethodId(null)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} /></button>
-                                    </div>
-                                    <input name="name" defaultValue={method.name} placeholder="Method Name" required style={inputStyle} />
-                                    <input name="accountNumber" defaultValue={method.account_number} placeholder="Account Number" required style={inputStyle} />
-                                    <input name="accountName" defaultValue={method.account_name} placeholder="Account Name" required style={inputStyle} />
-
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>QR Code Image (Optional)</label>
-                                        {method.qr_url && <img src={method.qr_url} style={{ width: '100px', height: '100px', borderRadius: '10px', objectFit: 'cover', border: '1px solid #ddd' }} />}
-                                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, method.id)} style={inputStyle} />
-                                    </div>
-
-                                    <button type="submit" disabled={isProcessing} className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}>
-                                        {isProcessing ? 'Saving...' : 'Save Changes'}
-                                    </button>
-                                </form>
-                            ) : (
-                                <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                                        <div>
-                                            <h3 style={{ margin: 0, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                {method.name}
-                                            </h3>
-                                            <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <span style={{ fontSize: '1.2rem', fontWeight: 700 }}>{method.account_number}</span>
-                                                <button onClick={() => { navigator.clipboard.writeText(method.account_number); showMessage('Number copied!'); }} style={{ border: 'none', background: '#e2e8f0', color: 'var(--primary)', borderRadius: '5px', padding: '5px', cursor: 'pointer' }} title="Copy Number">
-                                                    <Copy size={16} />
-                                                </button>
-                                            </div>
-                                            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '5px' }}>{method.account_name}</div>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '10px' }}>
-                                            <button onClick={() => setEditingMethodId(method.id)} style={{ color: 'var(--primary)', border: 'none', background: 'none', cursor: 'pointer' }}><Edit2 size={20} /></button>
-                                            <button onClick={() => deleteMethod(method.id)} style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}><Trash2 size={20} /></button>
-                                        </div>
-                                    </div>
-                                    {method.qr_url && (
-                                        <div style={{ marginTop: '15px' }}>
-                                            <img src={method.qr_url} style={{ width: '150px', height: '150px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #e2e8f0' }} alt="QR Code" />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
-
-    // --- COMPONENT: ORDERS LIST ---
-    const OrderHistory = () => {
-        const stats = orders.reduce((acc, order) => {
-            acc.totalOrders++;
-            if (order.status !== 'Cancelled') {
-                acc.totalSales += Number(order.total_amount || 0);
-            }
-            if (order.status === 'Pending' || !order.status) acc.pendingOrders++;
-            return acc;
-        }, { totalOrders: 0, totalSales: 0, pendingOrders: 0 });
-
-        const updateOrderStatus = async (orderId, newStatus) => {
-            const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-            if (error) { console.error(error); showMessage(`Error updating status: ${error.message}`); return; }
-            setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
-            showMessage('Order status updated!');
-        };
-
-        const deleteOrder = async (orderId) => {
-            if (window.confirm('Are you sure you want to delete this order?')) {
-                const { error } = await supabase.from('orders').delete().eq('id', orderId);
-                if (error) { console.error(error); showMessage(`Error deleting: ${error.message}`); return; }
-                setOrders(orders.filter(o => o.id !== orderId));
-                showMessage('Order deleted.');
-            }
-        };
-
-        const printReceipt = (order) => {
-            const printWindow = window.open('', '_blank', 'width=400,height=600');
-            printWindow.document.write(`
-                <html>
-                    <head>
-                        <title>Receipt - ${order.id}</title>
-                        <style>
-                            body { font-family: 'Courier New', Courier, monospace; padding: 10px; width: 57mm; margin: 0; font-size: 11px; line-height: 1.2; color: #000; }
-                            .center { text-align: center; }
-                            .logo { max-width: 30mm; max-height: 30mm; margin: 0 auto 5px; display: block; object-fit: contain; }
-                            .divider { border-bottom: 1px dashed #000; margin: 8px 0; }
-                            .item { display: flex; justify-content: space-between; margin-bottom: 3px; }
-                            .total { font-weight: bold; font-size: 13px; margin-top: 5px; }
-                            @media print { 
-                                body { width: 57mm; padding: 0; }
-                                @page { margin: 0; }
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="center">
-                            ${storeSettings.logo_url ? `<img src="${storeSettings.logo_url}" class="logo">` : ''}
-                            <div style="font-weight:bold; font-size: 14px; text-transform: uppercase;">${storeSettings.store_name}</div>
-                            <div style="margin-top: 2px;">${storeSettings.address}</div>
-                            <div>Tel: ${storeSettings.contact}</div>
-                        </div>
-                        <div class="divider"></div>
-                        <div>
-                            <strong>OR#:</strong> ${order.id.toString().slice(-6).toUpperCase()}<br>
-                            <strong>Date:</strong> ${new Date(order.timestamp).toLocaleString()}<br>
-                            <strong>Type:</strong> ${(order.order_type || 'Dine-in').toUpperCase()}<br>
-                            <strong>Cust:</strong> ${order.customer_details?.name}
-                            ${order.customer_details?.table_number ? `<br><strong>Table:</strong> ${order.customer_details.table_number}` : ''}
-                        </div>
-                        <div class="divider"></div>
-                        <div style="font-weight:bold; margin-bottom: 5px;">ITEMS:</div>
-                        ${(order.items || []).map(item => `<div class="item"><span>• ${item}</span></div>`).join('')}
-                        <div class="divider"></div>
-                        <div class="item total">
-                            <span>TOTAL</span>
-                            <span>₱${order.total_amount}</span>
-                        </div>
-                        <div class="divider"></div>
-                        <div class="center" style="margin-top: 10px; font-style: italic;">
-                            *** THANK YOU! ***<br>
-                            Please come again.
-                        </div>
-                        <script>
-                            window.onload = () => {
-                                window.print();
-                                setTimeout(() => window.close(), 500);
-                            };
-                        </script>
-                    </body>
-                </html>
-            `);
-            printWindow.document.close();
-            showMessage('Receipt generated! Check your print window.');
-        };
-
-        return (
-            <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-                    <h2 style={{ margin: 0 }}>Orders Management</h2>
-                </div>
-
-                {/* Stats Summary */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-                    <div style={{ background: '#eff6ff', padding: '20px', borderRadius: '15px', border: '1px solid #dbeafe' }}>
-                        <div style={{ color: '#1e40af', fontSize: '0.9rem', fontWeight: 600 }}>Total Orders</div>
-                        <div style={{ fontSize: '2rem', fontWeight: 800, color: '#1e3a8a' }}>{stats.totalOrders}</div>
-                    </div>
-                    <div style={{ background: '#f0fdf4', padding: '20px', borderRadius: '15px', border: '1px solid #dcfce7' }}>
-                        <div style={{ color: '#166534', fontSize: '0.9rem', fontWeight: 600 }}>Total Sales</div>
-                        <div style={{ fontSize: '2rem', fontWeight: 800, color: '#14532d' }}>₱{stats.totalSales}</div>
-                    </div>
-                    <div style={{ background: '#fff7ed', padding: '20px', borderRadius: '15px', border: '1px solid #ffedd5' }}>
-                        <div style={{ color: '#9a3412', fontSize: '0.9rem', fontWeight: 600 }}>Pending Orders</div>
-                        <div style={{ fontSize: '2rem', fontWeight: 800, color: '#7c2d12' }}>{stats.pendingOrders}</div>
-                    </div>
-                </div>
-
-                {orders.length === 0 ? <p className="text-muted">No orders recorded yet.</p> : (
-                    <div style={{ display: 'grid', gap: '20px' }}>
-                        {orders.slice().reverse().map((order, idx) => (
-                            <div key={order.id || idx} style={{ padding: '20px', border: '1px solid #e2e8f0', borderRadius: '15px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-                                    <div>
-                                        <span style={{ fontWeight: 800, color: 'var(--primary)', marginRight: '10px' }}>{(order.order_type || 'N/A').toUpperCase()}</span>
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(order.timestamp).toLocaleString()}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            <select
-                                                id={`status-${order.id}`}
-                                                defaultValue={order.status || 'Pending'}
-                                                style={{
-                                                    padding: '6px 12px',
-                                                    borderRadius: '8px',
-                                                    border: '1px solid #cbd5e1',
-                                                    fontSize: '0.85rem',
-                                                    outline: 'none',
-                                                    background: order.status === 'Completed' ? '#dcfce7' : order.status === 'Cancelled' ? '#fee2e2' : '#f8fafc',
-                                                    color: order.status === 'Completed' ? '#166534' : order.status === 'Cancelled' ? '#991b1b' : 'inherit',
-                                                    fontWeight: 600
-                                                }}
-                                            >
-                                                <option value="Pending">Pending</option>
-                                                <option value="Preparing">Preparing</option>
-                                                <option value="Ready">Ready</option>
-                                                <option value="Completed">Completed</option>
-                                                <option value="Cancelled">Cancelled</option>
-                                            </select>
-                                            <button
-                                                onClick={() => updateOrderStatus(order.id, document.getElementById(`status-${order.id}`).value)}
-                                                className="btn-primary"
-                                                style={{ padding: '6px 15px', fontSize: '0.8rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                            >
-                                                <Save size={14} /> Save
-                                            </button>
-                                        </div>
-                                        <button onClick={() => printReceipt(order)} style={{ color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer' }} title="Print Receipt"><Printer size={18} /></button>
-                                        <button onClick={() => deleteOrder(order.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="Delete Order"><Trash2 size={18} /></button>
-                                    </div>
-                                </div>
-                                <div style={{ marginBottom: '10px', fontSize: '0.95rem' }}>
-                                    <strong>{order.customer_details?.name}</strong> • {order.payment_method}
-                                    {order.customer_details?.phone && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{order.customer_details.phone}</div>}
-                                    {order.customer_details?.tableNumber && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Table: {order.customer_details.tableNumber}</div>}
-                                    {order.customer_details?.address && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Address: {order.customer_details.address}</div>}
-                                </div>
-                                <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', fontSize: '0.9rem' }}>
-                                    {order.items.map((item, i) => (
-                                        <div key={i} style={{ marginBottom: '4px' }}>• {item}</div>
-                                    ))}
-                                </div>
-                                <div style={{ marginTop: '15px', textAlign: 'right', fontWeight: 800, fontSize: '1.1rem' }}>
-                                    Total Amount: ₱{order.total_amount}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    // --- COMPONENT: STORE GENERAL SETTINGS ---
-    const StoreGeneralSettings = () => {
-        const [isProcessing, setIsProcessing] = useState(false);
-
-        const handleSave = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const updateData = {
-                store_name: formData.get('storeName'),
-                address: formData.get('address'),
-                contact: formData.get('contact'),
-                open_time: formData.get('openTime'),
-                close_time: formData.get('closeTime'),
-                manual_status: formData.get('manualStatus')
-            };
-
-            setIsProcessing(true);
-            const payload = storeSettings.id ? { id: storeSettings.id, ...updateData } : updateData;
-            const { data, error } = await supabase.from('store_settings').upsert(payload).select().single();
-            setIsProcessing(false);
-
-            if (error) {
-                console.error(error);
-                showMessage(`Error saving: ${error.message}`);
-                return;
-            }
-            setStoreSettings(data);
-            showMessage('General settings saved!');
-        };
-
-        const handleBannerUpload = async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    const newBanners = [...(storeSettings.banner_images || []), reader.result];
-                    let error;
-                    if (storeSettings.id) {
-                        const res = await supabase.from('store_settings').update({ banner_images: newBanners }).eq('id', storeSettings.id);
-                        error = res.error;
-                    } else {
-                        const res = await supabase.from('store_settings').upsert({ banner_images: newBanners }).select().single();
-                        error = res.error;
-                        if (res.data) setStoreSettings(res.data);
-                    }
-                    if (error) {
-                        console.error(error);
-                        showMessage(`Error saving banner: ${error.message}`);
-                        return;
-                    }
-                    if (storeSettings.id) setStoreSettings({ ...storeSettings, banner_images: newBanners });
-                    showMessage('Banner uploaded!');
-                };
-                reader.readAsDataURL(file);
-            }
-        };
-
-        const removeBanner = async (index) => {
-            const newBanners = (storeSettings.banner_images || []).filter((_, i) => i !== index);
-            if (!storeSettings.id) {
-                setStoreSettings({ ...storeSettings, banner_images: newBanners });
-                return;
-            }
-            const { error } = await supabase.from('store_settings').update({ banner_images: newBanners }).eq('id', storeSettings.id);
-            if (error) {
-                console.error(error);
-                showMessage(`Error removing: ${error.message}`);
-                return;
-            }
-            setStoreSettings({ ...storeSettings, banner_images: newBanners });
-            showMessage('Banner removed.');
-        };
-
-        const handleLogoUpload = async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    const logo_url = reader.result;
-                    let error;
-                    if (storeSettings.id) {
-                        const res = await supabase.from('store_settings').update({ logo_url }).eq('id', storeSettings.id);
-                        error = res.error;
-                    } else {
-                        const res = await supabase.from('store_settings').upsert({ logo_url }).select().single();
-                        error = res.error;
-                        if (res.data) setStoreSettings(res.data);
-                    }
-                    if (error) {
-                        console.error(error);
-                        showMessage(`Error saving logo: ${error.message}`);
-                        return;
-                    }
-                    if (storeSettings.id) setStoreSettings({ ...storeSettings, logo_url });
-                    showMessage('Logo updated!');
-                };
-                reader.readAsDataURL(file);
-            }
-        };
-
-        return (
-            <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
-                <h2 style={{ marginBottom: '30px' }}>Store Settings</h2>
-
-                <form onSubmit={handleSave}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
-                        <div>
-                            <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <Clock size={20} /> Store Availability
-                            </h3>
-                            <div style={{ display: 'grid', gap: '15px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Manual Status Toggle</label>
-                                    <select name="manualStatus" defaultValue={storeSettings.manual_status} style={inputStyle}>
-                                        <option value="auto">Auto (Based on Hours)</option>
-                                        <option value="open">Always Open</option>
-                                        <option value="closed">Always Closed</option>
-                                    </select>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Opening Time</label>
-                                        <input name="openTime" type="time" defaultValue={storeSettings.open_time} style={inputStyle} />
-                                    </div>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Closing Time</label>
-                                        <input name="closeTime" type="time" defaultValue={storeSettings.close_time} style={inputStyle} />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <FileText size={20} /> Store Information
-                            </h3>
-                            <div style={{ display: 'grid', gap: '15px' }}>
-                                <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Store Name</label><input name="storeName" defaultValue={storeSettings.store_name} style={inputStyle} /></div>
-                                <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Address</label><input name="address" defaultValue={storeSettings.address} style={inputStyle} /></div>
-                                <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Contact Number</label><input name="contact" defaultValue={storeSettings.contact} style={inputStyle} /></div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <Camera size={20} /> Store Logo
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                {storeSettings.logo_url && <img src={storeSettings.logo_url} style={{ width: '120px', height: '120px', objectFit: 'contain', border: '1px solid #ddd', borderRadius: '10px' }} />}
-                                <input type="file" accept="image/*" onChange={handleLogoUpload} style={inputStyle} />
-                            </div>
-                        </div>
-
-                        <div style={{ gridColumn: '1 / -1' }}>
-                            <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <ImageIcon size={20} /> Hero Slideshow Banners
-                            </h3>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-                                {(storeSettings.banner_images || []).map((url, i) => (
-                                    <div key={i} style={{ position: 'relative', overflow: 'hidden', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: 'var(--shadow)' }}>
-                                        <img src={url} style={{ width: '100%', height: '140px', objectFit: 'cover' }} alt={`Banner ${i}`} />
-                                        <button
-                                            type="button"
-                                            onClick={() => removeBanner(i)}
-                                            style={{
-                                                position: 'absolute',
-                                                top: '10px',
-                                                right: '10px',
-                                                background: 'rgba(239, 68, 68, 0.9)',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '50%',
-                                                width: '32px',
-                                                height: '32px',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                                                transition: 'all 0.2s'
-                                            }}
-                                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                        >
-                                            <X size={18} />
-                                        </button>
-                                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '5px 10px', fontSize: '0.7rem', textAlign: 'center' }}>
-                                            Banner {i + 1}
-                                        </div>
-                                    </div>
-                                ))}
-                                <label style={{
-                                    height: '140px',
-                                    border: '3px dashed var(--primary)',
-                                    borderRadius: '16px',
-                                    background: '#fff5f5',
-                                    color: 'var(--primary)',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '10px',
-                                    transition: 'all 0.3s',
-                                    fontWeight: 700
-                                }}
-                                    onMouseOver={(e) => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = 'var(--primary-dark)'; }}
-                                    onMouseOut={(e) => { e.currentTarget.style.background = '#fff5f5'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
-                                >
-                                    <Plus size={32} />
-                                    <span style={{ fontSize: '0.9rem' }}>Add New Banner</span>
-                                    <input type="file" accept="image/*" onChange={handleBannerUpload} style={{ display: 'none' }} />
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={isProcessing}
-                        className={`btn-primary ${isProcessing ? 'btn-loading' : ''}`}
-                        style={{ marginTop: '40px', width: '100%', padding: '15px' }}
-                    >
-                        {isProcessing ? 'Saving All Settings...' : 'Save All Settings'}
-                    </button>
-                </form>
-            </div>
-        );
-    };
-
 
     // --- MAIN RENDER ---
     return (
@@ -1340,12 +207,12 @@ const AdminDashboard = () => {
                     </div>
                 )}
 
-                {activeTab === 'menu' && <MenuManager />}
-                {activeTab === 'categories' && <CategoryManager />}
-                {activeTab === 'orders' && <OrderHistory />}
-                {activeTab === 'orderTypes' && <OrderTypeManager />}
-                {activeTab === 'payment' && <PaymentSettings />}
-                {activeTab === 'settings' && <StoreGeneralSettings />}
+                {activeTab === 'menu' && <MenuManager items={items} setItems={setItems} categories={categories} showMessage={showMessage} />}
+                {activeTab === 'categories' && <CategoryManager categories={categories} setCategories={setCategories} items={items} showMessage={showMessage} />}
+                {activeTab === 'orders' && <OrderHistory orders={orders} setOrders={setOrders} storeSettings={storeSettings} showMessage={showMessage} />}
+                {activeTab === 'orderTypes' && <OrderTypeManager orderTypes={orderTypes} setOrderTypes={setOrderTypes} showMessage={showMessage} />}
+                {activeTab === 'payment' && <PaymentSettings paymentSettings={paymentSettings} setPaymentSettings={setPaymentSettings} showMessage={showMessage} />}
+                {activeTab === 'settings' && <StoreGeneralSettings storeSettings={storeSettings} setStoreSettings={setStoreSettings} showMessage={showMessage} />}
             </main>
         </div>
     );
@@ -1362,14 +229,5 @@ const SidebarItem = ({ icon, label, active, onClick }) => (
         {icon} {label}
     </button>
 );
-
-const SectionLabel = ({ title, onAdd }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', marginBottom: '10px', paddingBottom: '5px', borderBottom: '1px solid #eee' }}>
-        <label style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{title}</label>
-        <button type="button" onClick={onAdd} style={{ color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>+ Add</button>
-    </div>
-);
-
-const inputStyle = { width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' };
 
 export default AdminDashboard;

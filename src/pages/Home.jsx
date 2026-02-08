@@ -92,6 +92,27 @@ const Home = () => {
 
     const isOpen = isStoreOpen();
 
+    // Smart sanitizer to fix QuotaExceededError (same as AdminDashboard)
+    const sanitizeItems = (items) => {
+        if (!Array.isArray(items)) return items;
+        return items.map(item => {
+            const isBase64 = typeof item.image === 'string' && item.image.startsWith('data:');
+            // If it's a huge base64 string, don't cache it locally.
+            if (isBase64 && item.image.length > 2000) {
+                return { ...item, image: null };
+            }
+            return item;
+        });
+    };
+
+    const safeSetItem = (key, value) => {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {
+            console.warn(`Error writing ${key} to localStorage`, e);
+        }
+    };
+
     // Load data from Supabase (Stale-While-Revalidate pattern)
     useEffect(() => {
         // 1. Initial Load from LocalStorage (Instant UI)
@@ -128,8 +149,11 @@ const Home = () => {
                 if (savedOrderTypes) setOrderTypes(JSON.parse(savedOrderTypes));
 
                 // If we have no categories at all (rare), then we show the loader
-                if (categories.length === 0 && !savedCats) {
+                // BUT if we found saved items, we are "not loading" anymore from user perspective
+                if (!savedItems && categories.length === 0 && !savedCats) {
                     setMenuLoading(true);
+                } else {
+                    setMenuLoading(false);
                 }
             } catch (err) {
                 console.error("Error loading from local storage", err);
@@ -172,7 +196,7 @@ const Home = () => {
                 }
                 const filteredCategories = finalCategories.filter(c => c.name !== 'Order Map' && c.id !== 'full-menu');
                 setCategories(filteredCategories);
-                localStorage.setItem('categories', JSON.stringify(filteredCategories));
+                safeSetItem('categories', filteredCategories);
 
                 if (!activeCategory || !filteredCategories.find(c => c.id === activeCategory)) {
                     if (filteredCategories.length > 0) {
@@ -190,21 +214,25 @@ const Home = () => {
                     });
                 }
                 setItems(finalItems);
-                localStorage.setItem('menuItems', JSON.stringify(finalItems));
+
+                // SANITIZE before saving to localStorage to prevent quota errors
+                const sanitizedForCache = sanitizeItems(finalItems);
+                safeSetItem('menuItems', sanitizedForCache);
+
 
                 if (payData && payData.length > 0) {
                     setPaymentSettings(payData);
-                    localStorage.setItem('paymentSettings', JSON.stringify(payData));
+                    safeSetItem('paymentSettings', payData);
                 }
 
                 if (typeData && typeData.length > 0) {
                     setOrderTypes(typeData);
-                    localStorage.setItem('orderTypes', JSON.stringify(typeData));
+                    safeSetItem('orderTypes', typeData);
                 }
 
                 if (storeData) {
                     setStoreSettings(storeData);
-                    localStorage.setItem('storeSettings', JSON.stringify(storeData));
+                    safeSetItem('storeSettings', storeData);
                 }
             } catch (error) {
                 console.error('Error fetching fresh data:', error);
