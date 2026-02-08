@@ -122,8 +122,6 @@ const Home = () => {
 
         loadFromLocal();
 
-        loadFromLocal();
-
         const fetchData = async () => {
             setIsRefreshing(true);
             try {
@@ -145,19 +143,35 @@ const Home = () => {
                 if (catErr) console.warn('Supabase Categories Error:', catErr);
                 if (itemErr) console.warn('Supabase Items Error:', itemErr);
 
-                // Update state and cache ONLY if data is fresh and NOT empty
+                // Update state and cache
+                // MERGE STRATEGY: Combine remote data with local hardcoded data to ensure new items show up
+                let finalCategories = [...(initialCategories || [])];
                 if (catData && catData.length > 0) {
-                    setCategories(catData);
-                    localStorage.setItem('categories', JSON.stringify(catData));
-                    if (!activeCategory || !catData.find(c => c.id === activeCategory)) {
-                        setActiveCategory(catData[0].id);
-                    }
+                    // Update existing or add new from DB
+                    catData.forEach(remoteCat => {
+                        const idx = finalCategories.findIndex(c => c.id === remoteCat.id);
+                        if (idx >= 0) finalCategories[idx] = remoteCat;
+                        else finalCategories.push(remoteCat);
+                    });
+                }
+                setCategories(finalCategories);
+                localStorage.setItem('categories', JSON.stringify(finalCategories));
+
+                if (!activeCategory || !finalCategories.find(c => c.id === activeCategory)) {
+                    if (finalCategories.length > 0) setActiveCategory(finalCategories[0].id);
                 }
 
+                let finalItems = [...(menuItems || [])];
                 if (itemData && itemData.length > 0) {
-                    setItems(itemData);
-                    localStorage.setItem('menuItems', JSON.stringify(itemData));
+                    // Update existing or add new from DB
+                    itemData.forEach(remoteItem => {
+                        const idx = finalItems.findIndex(i => i.id === remoteItem.id);
+                        if (idx >= 0) finalItems[idx] = remoteItem;
+                        else finalItems.push(remoteItem);
+                    });
                 }
+                setItems(finalItems);
+                localStorage.setItem('menuItems', JSON.stringify(finalItems));
 
                 if (payData && payData.length > 0) {
                     setPaymentSettings(payData);
@@ -205,7 +219,8 @@ const Home = () => {
     // Selection state for products with options
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectionOptions, setSelectionOptions] = useState({
-        variation: null,
+        variation: null, // Remains null or single object for standard, becomes array for multi
+        selectedVariations: [], // New state to handle multiple selections
         flavors: [],
         addons: []
     });
@@ -224,37 +239,65 @@ const Home = () => {
 
     const openProductSelection = (item) => {
         const firstVariation = (item.variations || []).find(v => !v.disabled);
-        const firstFlavor = (item.flavors || [])[0] || null;
+        const isMulti = item.allow_multiple ||
+            item.category_id?.toLowerCase().includes('milktea') ||
+            item.category_id?.toLowerCase().includes('fruit') ||
+            categories.find(c => c.id === item.category_id)?.name?.toLowerCase().includes('milk tea') ||
+            categories.find(c => c.id === item.category_id)?.name?.toLowerCase().includes('fruit');
 
         setSelectedProduct(item);
         setSelectionOptions({
-            variation: firstVariation || null,
+            variation: isMulti ? null : (firstVariation || null),
+            selectedVariations: [],
             flavors: [],
             addons: []
         });
     };
 
     const addToCart = (item, options) => {
+        // Handle Multiple Variations (Milktea/Fruit Series)
+        const isMulti = item.allow_multiple ||
+            item.category_id?.toLowerCase().includes('milktea') ||
+            item.category_id?.toLowerCase().includes('fruit') ||
+            categories.find(c => c.id === item.category_id)?.name?.toLowerCase().includes('milk tea') ||
+            categories.find(c => c.id === item.category_id)?.name?.toLowerCase().includes('fruit');
+
+        if (isMulti && options.selectedVariations.length > 0) {
+            options.selectedVariations.forEach(variation => {
+                addSingleToCart(item, { ...options, variation });
+            });
+        } else {
+            addSingleToCart(item, options);
+        }
+        setSelectedProduct(null);
+    };
+
+    const addSingleToCart = (item, options) => {
         const cartItemId = `${item.id}-${options.variation?.name || ''}-${options.flavors.sort().join(',')}-${options.addons.map(a => a.name).join(',')}`;
         const existing = cart.find(i => i.cartItemId === cartItemId);
 
         const variationPrice = options.variation ? Number(options.variation.price) : 0;
         const basePrice = Number(item.promo_price || item.price);
-        // Use variation price if set (>0), otherwise use base price
-        // UPDATE: Specifically for Pork Ribs Barbeque, we make it additive
+
         let price;
         if (item.name?.toLowerCase().includes('pork ribs')) {
             price = basePrice + variationPrice;
         } else {
             price = variationPrice > 0 ? variationPrice : basePrice;
         }
-        const addonsPrice = options.addons.reduce((sum, a) => sum + Number(a.price), 0);
-        const finalPrice = price + addonsPrice;
+
+        const flavorsPrice = (options.flavors || []).reduce((sum, fName) => {
+            const flavorObj = (item.flavors || []).find(f => (typeof f === 'string' ? f : f.name) === fName);
+            return sum + (flavorObj?.price || 0);
+        }, 0);
+
+        const addonsPrice = (options.addons || []).reduce((sum, a) => sum + Number(a.price), 0);
+        const finalPrice = price + flavorsPrice + addonsPrice;
 
         if (existing) {
-            setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1 } : i));
+            setCart(prev => prev.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1 } : i));
         } else {
-            setCart([...cart, {
+            setCart(prev => [...prev, {
                 ...item,
                 cartItemId,
                 selectedVariation: options.variation,
@@ -264,7 +307,6 @@ const Home = () => {
                 quantity: 1
             }]);
         }
-        setSelectedProduct(null);
     };
 
     const removeFromCart = (cartItemId) => {
@@ -372,8 +414,7 @@ Thank you!`.trim();
 
     return (
         <div className="page-wrapper">
-            {/* Top Loading Bar */}
-            {isRefreshing && <div className="top-loader top-loader-anim"></div>}
+            {/* Top Loading Bar Removed */}
 
             {/* Store Closed Overlay */}
             {!isOpen && (
@@ -383,12 +424,7 @@ Thank you!`.trim();
                 </div>
             )}
 
-            {isRefreshing && (
-                <div style={{ position: 'fixed', bottom: '20px', left: '20px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '8px 15px', borderRadius: '20px', fontSize: '0.8rem', zIndex: 1000, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div className="pulse" style={{ width: '8px', height: '8px', background: 'var(--accent)', borderRadius: '50%' }}></div>
-                    Updating items...
-                </div>
-            )}
+            {/* Refreshing Toast Removed */}
 
             <header className="app-header">
                 <div className="container header-container">
@@ -409,24 +445,18 @@ Thank you!`.trim();
 
                 <div className="category-nav-wrapper">
                     <div className="category-slider">
-                        {menuLoading && categories.length === 0 ? (
-                            [1, 2, 3, 4, 5].map(i => (
-                                <div key={i} className="category-item skeleton" style={{ width: '100px', height: '35px', border: 'none' }}></div>
-                            ))
-                        ) : (
-                            categories.map(cat => (
-                                <div
-                                    key={cat.id}
-                                    className={`category-item ${activeCategory === cat.id ? 'active' : ''}`}
-                                    onClick={() => {
-                                        setActiveCategory(cat.id);
-                                        document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                    }}
-                                >
-                                    {cat.name}
-                                </div>
-                            ))
-                        )}
+                        {categories.map(cat => (
+                            <div
+                                key={cat.id}
+                                className={`category-item ${activeCategory === cat.id ? 'active' : ''}`}
+                                onClick={() => {
+                                    setActiveCategory(cat.id);
+                                    document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }}
+                            >
+                                {cat.name}
+                            </div>
+                        ))}
                     </div>
                 </div>
             </header>
@@ -471,55 +501,48 @@ Thank you!`.trim();
 
 
                 <div className="menu-grid">
-                    {menuLoading && filteredItems.length === 0 ? (
-                        <div className="loader-container" style={{ gridColumn: '1 / -1', minHeight: '300px' }}>
-                            <div className="themed-spinner"></div>
-                            <p className="loader-text">Preparing our delicious menu...</p>
-                        </div>
-                    ) : (
-                        filteredItems.map(item => (
-                            <div className="menu-item-card" key={item.id} style={{ opacity: item.out_of_stock ? 0.6 : 1 }}>
-                                <div style={{ position: 'relative' }}>
-                                    <img src={item.image} alt={item.name} className="menu-item-image" loading="lazy" />
-                                    {item.promo_price && <span style={{ position: 'absolute', top: '10px', left: '10px', background: '#ef4444', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 800 }}>PROMO</span>}
-                                    {item.out_of_stock && <span style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, borderRadius: '20px' }}>OUT OF STOCK</span>}
-                                </div>
-                                <div className="menu-item-info">
-                                    <h3 className="menu-item-name">{item.name}</h3>
-                                    <p className="menu-item-desc">{item.description}</p>
-                                    <div className="menu-item-footer">
-                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                            {item.promo_price ? (
-                                                <>
-                                                    <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.8rem' }}>₱{item.price}</span>
-                                                    <span className="menu-item-price" style={{ color: '#ef4444' }}>₱{item.promo_price}</span>
-                                                </>
-                                            ) : (
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    {item.variations && item.variations.length > 0 && (
-                                                        <span className="price-start-text">Starts at</span>
-                                                    )}
-                                                    <span className="menu-item-price">
-                                                        ₱{item.variations && item.variations.length > 0
-                                                            ? Math.min(...item.variations.map(v => v.price))
-                                                            : item.price}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <button
-                                            className="btn-primary btn-add-sm"
-                                            disabled={item.out_of_stock || !isOpen}
-                                            onClick={() => openProductSelection(item)}
-                                            style={{ opacity: (item.out_of_stock || !isOpen) ? 0.5 : 1 }}
-                                        >
-                                            <Plus size={12} style={{ marginRight: '3px' }} /> Add
-                                        </button>
+                    {filteredItems.map(item => (
+                        <div className="menu-item-card" key={item.id} style={{ opacity: item.out_of_stock ? 0.6 : 1 }}>
+                            <div style={{ position: 'relative' }}>
+                                <img src={item.image} alt={item.name} className="menu-item-image" loading="lazy" />
+                                {item.promo_price && <span style={{ position: 'absolute', top: '10px', left: '10px', background: '#ef4444', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 800 }}>PROMO</span>}
+                                {item.out_of_stock && <span style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, borderRadius: '20px' }}>OUT OF STOCK</span>}
+                            </div>
+                            <div className="menu-item-info">
+                                <h3 className="menu-item-name">{item.name}</h3>
+                                <p className="menu-item-desc">{item.description}</p>
+                                <div className="menu-item-footer">
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        {item.promo_price ? (
+                                            <>
+                                                <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.8rem' }}>₱{item.price}</span>
+                                                <span className="menu-item-price" style={{ color: '#ef4444' }}>₱{item.promo_price}</span>
+                                            </>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                {item.variations && item.variations.length > 0 && (
+                                                    <span className="price-start-text">Starts at</span>
+                                                )}
+                                                <span className="menu-item-price">
+                                                    ₱{item.variations && item.variations.length > 0
+                                                        ? Math.min(...item.variations.map(v => v.price))
+                                                        : item.price}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
+                                    <button
+                                        className="btn-primary btn-add-sm"
+                                        disabled={item.out_of_stock || !isOpen}
+                                        onClick={() => openProductSelection(item)}
+                                        style={{ opacity: (item.out_of_stock || !isOpen) ? 0.5 : 1 }}
+                                    >
+                                        <Plus size={12} style={{ marginRight: '3px' }} /> Add
+                                    </button>
                                 </div>
                             </div>
-                        ))
-                    )}
+                        </div>
+                    ))}
                 </div>
             </main>
 
@@ -536,24 +559,66 @@ Thank you!`.trim();
 
                             {selectedProduct.variations && selectedProduct.variations.length > 0 && (
                                 <div style={{ marginBottom: '20px' }}>
-                                    <label style={{ fontWeight: 700, display: 'block', marginBottom: '10px' }}>Select an Option</label>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                        <label style={{ fontWeight: 700, display: 'block' }}>
+                                            Select Options
+                                            {(selectedProduct.allow_multiple ||
+                                                selectedProduct.category_id?.toLowerCase().includes('milktea') ||
+                                                categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
+                                                categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit')) &&
+                                                <span style={{ color: 'var(--accent)', marginLeft: '10px', fontSize: '0.8rem' }}>(You can choose multiple)</span>
+                                            }
+                                        </label>
+                                    </div>
                                     <div className="variation-list">
-                                        {selectedProduct.variations.map(v => (
-                                            <div
-                                                key={v.name}
-                                                className={`variation-option ${selectionOptions.variation?.name === v.name ? 'active' : ''} ${v.disabled ? 'disabled' : ''}`}
-                                                onClick={() => !v.disabled && setSelectionOptions({ ...selectionOptions, variation: v })}
-                                                style={{ opacity: v.disabled ? 0.5 : 1, cursor: v.disabled ? 'not-allowed' : 'pointer' }}
-                                            >
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                        {selectionOptions.variation?.name === v.name && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)' }}></div>}
+                                        {selectedProduct.variations.map(v => {
+                                            const isMulti = selectedProduct.allow_multiple ||
+                                                selectedProduct.category_id?.toLowerCase().includes('milktea') ||
+                                                categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
+                                                categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit');
+
+                                            const isSelected = isMulti
+                                                ? selectionOptions.selectedVariations.some(sv => sv.name === v.name)
+                                                : selectionOptions.variation?.name === v.name;
+
+                                            return (
+                                                <div
+                                                    key={v.name}
+                                                    className={`variation-option ${isSelected ? 'active' : ''} ${v.disabled ? 'disabled' : ''}`}
+                                                    onClick={() => {
+                                                        if (v.disabled) return;
+                                                        if (isMulti) {
+                                                            const exists = selectionOptions.selectedVariations.find(sv => sv.name === v.name);
+                                                            if (exists) {
+                                                                setSelectionOptions({ ...selectionOptions, selectedVariations: selectionOptions.selectedVariations.filter(sv => sv.name !== v.name) });
+                                                            } else {
+                                                                setSelectionOptions({ ...selectionOptions, selectedVariations: [...selectionOptions.selectedVariations, v] });
+                                                            }
+                                                        } else {
+                                                            setSelectionOptions({ ...selectionOptions, variation: v });
+                                                        }
+                                                    }}
+                                                    style={{ opacity: v.disabled ? 0.5 : 1, cursor: v.disabled ? 'not-allowed' : 'pointer' }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <div style={{
+                                                            width: '18px', height: '18px',
+                                                            borderRadius: isMulti ? '4px' : '50%',
+                                                            border: '2px solid var(--primary)',
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                        }}>
+                                                            {isSelected && <div style={{
+                                                                width: '10px', height: '10px',
+                                                                borderRadius: isMulti ? '2px' : '50%',
+                                                                background: 'var(--primary)'
+                                                            }}></div>}
+                                                        </div>
+                                                        <span className="variation-name">{v.name} {v.disabled && '(Out of Stock)'}</span>
                                                     </div>
-                                                    <span className="variation-name">{v.name} {v.disabled && '(Out of Stock)'}</span>
+                                                    <span className="variation-price-tag">₱{v.price}</span>
                                                 </div>
-                                                <span className="variation-price-tag">₱{v.price}</span>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -591,36 +656,49 @@ Thank you!`.trim();
                             )}
                             {selectedProduct.flavors && selectedProduct.flavors.length > 0 && (
                                 <div style={{ marginBottom: '20px' }}>
-                                    <label style={{ fontWeight: 700, display: 'block', marginBottom: '10px' }}>Select Flavors (You can pick multiple)</label>
+                                    <label style={{ fontWeight: 700, display: 'block', marginBottom: '10px' }}>
+                                        Select Flavors
+                                        {selectedProduct.allow_multiple && <span style={{ color: 'var(--accent)', marginLeft: '10px', fontSize: '0.8rem' }}>(Multiple allowed)</span>}
+                                    </label>
                                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                         {selectedProduct.flavors.map(f => {
                                             const name = typeof f === 'string' ? f : f.name;
+                                            const price = typeof f === 'object' ? (f.price || 0) : 0;
                                             const disabled = typeof f === 'object' ? f.disabled : false;
 
                                             if (disabled) return null;
+
+                                            const isSelected = selectionOptions.flavors.includes(name);
 
                                             return (
                                                 <button
                                                     key={name}
                                                     onClick={() => {
-                                                        const exists = selectionOptions.flavors.includes(name);
                                                         let newFlavors;
-                                                        if (exists) {
+                                                        if (isSelected) {
                                                             newFlavors = selectionOptions.flavors.filter(x => x !== name);
                                                         } else {
-                                                            newFlavors = [...selectionOptions.flavors, name];
+                                                            if (selectedProduct.allow_multiple) {
+                                                                newFlavors = [...selectionOptions.flavors, name];
+                                                            } else {
+                                                                newFlavors = [name];
+                                                            }
                                                         }
                                                         setSelectionOptions({ ...selectionOptions, flavors: newFlavors });
                                                     }}
                                                     style={{
                                                         padding: '8px 15px', borderRadius: '10px',
                                                         border: '1px solid var(--primary)',
-                                                        background: selectionOptions.flavors.includes(name) ? 'var(--primary)' : 'white',
-                                                        color: selectionOptions.flavors.includes(name) ? 'white' : 'var(--primary)',
-                                                        cursor: 'pointer'
+                                                        background: isSelected ? 'var(--primary)' : 'white',
+                                                        color: isSelected ? 'white' : 'var(--primary)',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        alignItems: 'center'
                                                     }}
                                                 >
-                                                    {name}
+                                                    <span style={{ fontWeight: 600 }}>{name}</span>
+                                                    {price > 0 && <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>+₱{price}</span>}
                                                 </button>
                                             );
                                         })}
@@ -628,14 +706,52 @@ Thank you!`.trim();
                                 </div>
                             )}
 
-                            <button className="btn-primary" style={{ width: '100%', padding: '15px', fontWeight: 700, fontSize: '1.1rem' }} onClick={() => addToCart(selectedProduct, selectionOptions)}>
-                                Add to Cart - ₱{(
-                                    (selectionOptions.variation && Number(selectionOptions.variation.price) > 0)
-                                        ? (selectedProduct.name?.toLowerCase().includes('pork ribs')
-                                            ? Number(selectedProduct.promo_price || selectedProduct.price) + Number(selectionOptions.variation.price)
-                                            : Number(selectionOptions.variation.price))
-                                        : Number(selectedProduct.promo_price || selectedProduct.price)
-                                ) + selectionOptions.addons.reduce((sum, a) => sum + Number(a.price), 0)}
+                            <button
+                                className="btn-primary"
+                                style={{ width: '100%', padding: '15px', fontWeight: 700, fontSize: '1.1rem' }}
+                                onClick={() => addToCart(selectedProduct, selectionOptions)}
+                                disabled={(
+                                    !(selectedProduct.allow_multiple ||
+                                        selectedProduct.category_id?.toLowerCase().includes('milktea') ||
+                                        categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
+                                        categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit'))
+                                    && !selectionOptions.variation
+                                ) || (
+                                        (selectedProduct.allow_multiple ||
+                                            selectedProduct.category_id?.toLowerCase().includes('milktea') ||
+                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
+                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit'))
+                                        && selectionOptions.selectedVariations.length === 0
+                                    )}
+                            >
+                                Add to Cart - ₱{
+                                    (() => {
+                                        const isMulti = selectedProduct.allow_multiple ||
+                                            selectedProduct.category_id?.toLowerCase().includes('milktea') ||
+                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('milk tea') ||
+                                            categories.find(c => c.id === selectedProduct.category_id)?.name?.toLowerCase().includes('fruit');
+
+                                        const basePrice = Number(selectedProduct.promo_price || selectedProduct.price);
+                                        const addonsPrice = selectionOptions.addons.reduce((sum, a) => sum + Number(a.price), 0);
+
+                                        const flavorsPrice = selectionOptions.flavors.reduce((sum, fName) => {
+                                            const flavorObj = (selectedProduct.flavors || []).find(f => (typeof f === 'string' ? f : f.name) === fName);
+                                            return sum + (flavorObj?.price || 0);
+                                        }, 0);
+
+                                        if (isMulti) {
+                                            const totalVariationsPrice = selectionOptions.selectedVariations.reduce((sum, v) => sum + Number(v.price), 0);
+                                            // In multi mode, addons and constant base flavors are applied per cup?
+                                            // Let's assume addons are per variation (cup).
+                                            const totalAddonsPrice = addonsPrice * selectionOptions.selectedVariations.length;
+                                            const totalFlavorsPrice = flavorsPrice * selectionOptions.selectedVariations.length;
+                                            return totalVariationsPrice + totalAddonsPrice + totalFlavorsPrice;
+                                        } else {
+                                            const variationPrice = selectionOptions.variation ? Number(selectionOptions.variation.price) : basePrice;
+                                            return variationPrice + addonsPrice + flavorsPrice;
+                                        }
+                                    })()
+                                }
                             </button>
                         </div>
                     </div>

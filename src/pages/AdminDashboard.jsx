@@ -198,7 +198,8 @@ const AdminDashboard = () => {
                 variations: tempVariations,
                 flavors: tempFlavors,
                 addons: tempAddons,
-                out_of_stock: formData.get('outOfStock') === 'on'
+                out_of_stock: formData.get('outOfStock') === 'on',
+                allow_multiple: formData.get('allowMultiple') === 'on'
             };
 
             setIsSaving(true);
@@ -378,9 +379,15 @@ const AdminDashboard = () => {
                                 }
                             }} style={inputStyle} />
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <input name="outOfStock" type="checkbox" defaultChecked={editingItem.out_of_stock} style={{ width: '20px', height: '20px' }} />
-                            <label style={{ fontWeight: 600 }}>Mark as Out of Stock</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <input name="outOfStock" type="checkbox" defaultChecked={editingItem.out_of_stock} style={{ width: '20px', height: '20px' }} />
+                                <label style={{ fontWeight: 600 }}>Out of Stock</label>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <input name="allowMultiple" type="checkbox" defaultChecked={editingItem.allow_multiple} style={{ width: '20px', height: '20px' }} />
+                                <label style={{ fontWeight: 600 }}>Allow Multiple Flavors/Variations</label>
+                            </div>
                         </div>
                     </div>
 
@@ -399,9 +406,10 @@ const AdminDashboard = () => {
                     ))}
 
                     {/* Flavors */}
-                    <SectionLabel title="Flavors" onAdd={() => setTempFlavors([...tempFlavors, { name: '', disabled: false }])} />
+                    <SectionLabel title="Flavors" onAdd={() => setTempFlavors([...tempFlavors, { name: '', price: 0, disabled: false }])} />
                     {tempFlavors.map((f, i) => {
                         const name = typeof f === 'string' ? f : f.name;
+                        const price = typeof f === 'object' ? (f.price || 0) : 0;
                         const disabled = typeof f === 'object' ? f.disabled : false;
                         return (
                             <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '10px', alignItems: 'center' }}>
@@ -409,12 +417,25 @@ const AdminDashboard = () => {
                                     value={name}
                                     onChange={e => {
                                         const n = [...tempFlavors];
-                                        if (typeof n[i] === 'string') n[i] = { name: e.target.value, disabled: false };
+                                        if (typeof n[i] === 'string') n[i] = { name: e.target.value, price: 0, disabled: false };
                                         else n[i] = { ...n[i], name: e.target.value };
                                         setTempFlavors(n);
                                     }}
-                                    placeholder="Flavor Name (e.g. Buffalo)"
+                                    placeholder="Flavor Name"
                                     style={inputStyle}
+                                />
+                                <input
+                                    type="number"
+                                    value={price}
+                                    onChange={e => {
+                                        const n = [...tempFlavors];
+                                        const p = Number(e.target.value);
+                                        if (typeof n[i] === 'string') n[i] = { name: n[i], price: p, disabled: false };
+                                        else n[i] = { ...n[i], price: p };
+                                        setTempFlavors(n);
+                                    }}
+                                    placeholder="Price"
+                                    style={{ ...inputStyle, width: '100px' }}
                                 />
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                                     <input
@@ -422,7 +443,7 @@ const AdminDashboard = () => {
                                         checked={disabled}
                                         onChange={e => {
                                             const n = [...tempFlavors];
-                                            if (typeof n[i] === 'string') n[i] = { name: n[i], disabled: e.target.checked };
+                                            if (typeof n[i] === 'string') n[i] = { name: n[i], price: 0, disabled: e.target.checked };
                                             else n[i] = { ...n[i], disabled: e.target.checked };
                                             setTempFlavors(n);
                                         }}
