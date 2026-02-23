@@ -18,7 +18,9 @@ import {
     Copy,
     CreditCard,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    Truck,
+    Utensils
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { categories as initialCategories, menuItems } from '../data/MenuData';
@@ -228,6 +230,15 @@ const Home = () => {
                 if (typeData && typeData.length > 0) {
                     setOrderTypes(typeData);
                     safeSetItem('orderTypes', typeData);
+                } else {
+                    // Fallback to defaults if DB is empty but we want them to show
+                    const defaults = [
+                        { id: 'dine-in', name: 'Dine-in' },
+                        { id: 'pickup', name: 'Take Out' },
+                        { id: 'delivery', name: 'Delivery' }
+                    ];
+                    setOrderTypes(defaults);
+                    safeSetItem('orderTypes', defaults);
                 }
 
                 if (storeData) {
@@ -417,6 +428,11 @@ const Home = () => {
             if (orderType === 'dine-in') customerInfoStr += `\nTable Number: ${customerDetails.table_number}`;
             if (orderType === 'pickup') customerInfoStr += `\nPhone: ${customerDetails.phone}\nPickup Time: ${customerDetails.pickup_time}`;
             if (orderType === 'delivery') customerInfoStr += `\nPhone: ${customerDetails.phone}\nAddress: ${customerDetails.address}\nLandmark: ${customerDetails.landmark}`;
+
+            // Add notes if present and not already added as landmark
+            if (orderType !== 'delivery' && customerDetails.landmark) {
+                customerInfoStr += `\nNotes: ${customerDetails.landmark}`;
+            }
 
             const message = `
 Hello! I'd like to place an order:
@@ -881,9 +897,26 @@ Thank you!`.trim();
                                 {/* Order Type & Form here (omitted for brevity, assume exists as before) */}
                                 <div style={{ marginBottom: '30px' }}>
                                     <label style={{ fontWeight: 700, fontSize: '1rem', display: 'block', marginBottom: '15px' }}>Select Order Type</label>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
                                         {orderTypes.map(type => (
-                                            <button key={type.id} onClick={() => setOrderType(type.id)} style={{ padding: '8px', fontSize: '0.9rem', borderRadius: '12px', border: '1px solid var(--primary)', background: orderType === type.id ? 'var(--primary)' : 'white', color: orderType === type.id ? 'white' : 'var(--primary)', fontWeight: 700, cursor: 'pointer' }}>{type.name}</button>
+                                            <button
+                                                key={type.id}
+                                                onClick={() => setOrderType(type.id)}
+                                                style={{
+                                                    padding: '15px', borderRadius: '15px', border: '2px solid',
+                                                    borderColor: orderType === type.id ? 'var(--primary)' : '#e2e8f0',
+                                                    background: orderType === type.id ? '#f0f9ff' : 'white',
+                                                    cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s'
+                                                }}
+                                            >
+                                                <div style={{ fontSize: '1.5rem', marginBottom: '8px', color: orderType === type.id ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                                    {type.id === 'dine-in' && <Utensils size={24} style={{ margin: '0 auto' }} />}
+                                                    {type.id === 'pickup' && <ShoppingBag size={24} style={{ margin: '0 auto' }} />}
+                                                    {type.id === 'delivery' && <Truck size={24} style={{ margin: '0 auto' }} />}
+                                                    {!['dine-in', 'pickup', 'delivery'].includes(type.id) && <MessageSquare size={24} style={{ margin: '0 auto' }} />}
+                                                </div>
+                                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: orderType === type.id ? 'var(--primary)' : 'var(--text-muted)' }}>{type.name}</div>
+                                            </button>
                                         ))}
                                     </div>
                                 </div>
@@ -897,7 +930,17 @@ Thank you!`.trim();
                                             {orderType !== 'dine-in' && <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '5px', fontWeight: 600 }}>Phone</label><input type="tel" value={customerDetails.phone} onChange={(e) => setCustomerDetails({ ...customerDetails, phone: e.target.value })} style={{ padding: '12px', width: '100%', borderRadius: '10px', border: '1px solid #e2e8f0' }} /></div>}
                                             {orderType === 'pickup' && <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '5px', fontWeight: 600 }}>Time</label><input type="time" value={customerDetails.pickup_time} onChange={(e) => setCustomerDetails({ ...customerDetails, pickup_time: e.target.value })} style={{ padding: '12px', width: '100%', borderRadius: '10px', border: '1px solid #e2e8f0' }} /></div>}
                                             {orderType === 'delivery' && <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '5px', fontWeight: 600 }}>Address</label><textarea value={customerDetails.address} onChange={(e) => setCustomerDetails({ ...customerDetails, address: e.target.value })} style={{ padding: '12px', width: '100%', borderRadius: '10px', border: '1px solid #e2e8f0' }} /></div>}
-                                            {!['dine-in', 'pickup', 'delivery'].includes(orderType) && <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '5px', fontWeight: 600 }}>Notes / Instructions</label><textarea value={customerDetails.landmark} onChange={(e) => setCustomerDetails({ ...customerDetails, landmark: e.target.value })} placeholder="Any specific requests..." style={{ padding: '12px', width: '100%', borderRadius: '10px', border: '1px solid #e2e8f0' }} /></div>}
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '5px', fontWeight: 600 }}>
+                                                    {orderType === 'delivery' ? 'Landmark / Delivery Instructions' : 'Special Instructions / Notes'}
+                                                </label>
+                                                <textarea
+                                                    value={customerDetails.landmark}
+                                                    onChange={(e) => setCustomerDetails({ ...customerDetails, landmark: e.target.value })}
+                                                    placeholder={orderType === 'delivery' ? "e.g. Near the blue gate, 2nd floor..." : "e.g. No onions, less ice, please..."}
+                                                    style={{ padding: '12px', width: '100%', borderRadius: '10px', border: '1px solid #e2e8f0', minHeight: '80px' }}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 )}
