@@ -18,19 +18,29 @@ export const AuthProvider = ({ children }) => {
         }
 
         // Get initial session
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then((result) => {
+            const session = result?.data?.session;
             if (!localStorage.getItem('admin_bypass')) {
                 setCurrentUser(session?.user ?? null);
             }
             setLoading(false);
+        }).catch(err => {
+            console.error("Auth session error:", err);
+            setLoading(false);
         });
 
         // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setCurrentUser(session?.user ?? null);
+        const { data: authData } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!localStorage.getItem('admin_bypass')) {
+                setCurrentUser(session?.user ?? null);
+            }
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            if (authData?.subscription) {
+                authData.subscription.unsubscribe();
+            }
+        };
     }, []);
 
     const value = {

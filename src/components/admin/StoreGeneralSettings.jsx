@@ -6,6 +6,44 @@ import { inputStyle } from './Shared';
 const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) => {
     const [isProcessing, setIsProcessing] = useState(false);
 
+    const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+    const getValidId = async (currentId) => {
+        if (isUUID(currentId)) return currentId;
+        // Try to fetch real ID from DB if current is invalid
+        const { data } = await supabase.from('store_settings').select('id').limit(1).single();
+        return data?.id || null;
+    };
+
+    const handleResetToDefaults = async () => {
+        if (!window.confirm('This will overwrite current store settings with Oesters Cafe defaults. Continue?')) return;
+
+        const defaults = {
+            store_name: 'Oesters Cafe and Resto',
+            address: 'Poblacion, El Nido, Palawan',
+            contact: '09563713967',
+            open_time: '16:00',
+            close_time: '01:00',
+            manual_status: 'auto',
+            logo_url: '/logo.png',
+            banner_images: []
+        };
+
+        setIsProcessing(true);
+        const targetId = await getValidId(storeSettings.id);
+
+        const payload = targetId ? { id: targetId, ...defaults } : defaults;
+        const { data, error } = await supabase.from('store_settings').upsert(payload).select().single();
+        setIsProcessing(false);
+
+        if (error) {
+            showMessage(`Error resetting: ${error.message}`);
+            return;
+        }
+        setStoreSettings(data);
+        showMessage('Settings reset to Oesters defaults!');
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -19,7 +57,9 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
         };
 
         setIsProcessing(true);
-        const payload = storeSettings.id ? { id: storeSettings.id, ...updateData } : updateData;
+        const targetId = await getValidId(storeSettings.id);
+
+        const payload = targetId ? { id: targetId, ...updateData } : updateData;
         const { data, error } = await supabase.from('store_settings').upsert(payload).select().single();
         setIsProcessing(false);
 
@@ -38,9 +78,10 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
             const reader = new FileReader();
             reader.onloadend = async () => {
                 const newBanners = [...(storeSettings.banner_images || []), reader.result];
+                const targetId = await getValidId(storeSettings.id);
                 let error;
-                if (storeSettings.id) {
-                    const res = await supabase.from('store_settings').update({ banner_images: newBanners }).eq('id', storeSettings.id);
+                if (targetId) {
+                    const res = await supabase.from('store_settings').update({ banner_images: newBanners }).eq('id', targetId);
                     error = res.error;
                 } else {
                     const res = await supabase.from('store_settings').upsert({ banner_images: newBanners }).select().single();
@@ -52,7 +93,7 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
                     showMessage(`Error saving banner: ${error.message}`);
                     return;
                 }
-                if (storeSettings.id) setStoreSettings({ ...storeSettings, banner_images: newBanners });
+                if (targetId) setStoreSettings({ ...storeSettings, banner_images: newBanners });
                 showMessage('Banner uploaded!');
             };
             reader.readAsDataURL(file);
@@ -61,11 +102,13 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
 
     const removeBanner = async (index) => {
         const newBanners = (storeSettings.banner_images || []).filter((_, i) => i !== index);
-        if (!storeSettings.id) {
+        const targetId = await getValidId(storeSettings.id);
+
+        if (!targetId) {
             setStoreSettings({ ...storeSettings, banner_images: newBanners });
             return;
         }
-        const { error } = await supabase.from('store_settings').update({ banner_images: newBanners }).eq('id', storeSettings.id);
+        const { error } = await supabase.from('store_settings').update({ banner_images: newBanners }).eq('id', targetId);
         if (error) {
             console.error(error);
             showMessage(`Error removing: ${error.message}`);
@@ -81,9 +124,10 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
             const reader = new FileReader();
             reader.onloadend = async () => {
                 const logo_url = reader.result;
+                const targetId = await getValidId(storeSettings.id);
                 let error;
-                if (storeSettings.id) {
-                    const res = await supabase.from('store_settings').update({ logo_url }).eq('id', storeSettings.id);
+                if (targetId) {
+                    const res = await supabase.from('store_settings').update({ logo_url }).eq('id', targetId);
                     error = res.error;
                 } else {
                     const res = await supabase.from('store_settings').upsert({ logo_url }).select().single();
@@ -95,7 +139,7 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
                     showMessage(`Error saving logo: ${error.message}`);
                     return;
                 }
-                if (storeSettings.id) setStoreSettings({ ...storeSettings, logo_url });
+                if (targetId) setStoreSettings({ ...storeSettings, logo_url });
                 showMessage('Logo updated!');
             };
             reader.readAsDataURL(file);
@@ -104,7 +148,28 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
 
     return (
         <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
-            <h2 style={{ marginBottom: '30px' }}>Store Settings</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                <h2 style={{ margin: 0 }}>Store Settings</h2>
+                <button
+                    type="button"
+                    onClick={handleResetToDefaults}
+                    style={{
+                        background: '#f1f5f9',
+                        color: '#64748b',
+                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: '10px',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = '#e2e8f0'}
+                    onMouseOut={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                >
+                    Reset to Oesters Defaults
+                </button>
+            </div>
 
             <form onSubmit={handleSave}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>

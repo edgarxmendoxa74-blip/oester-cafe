@@ -70,16 +70,9 @@ const AdminDashboard = () => {
     const [categories, setCategories] = useState(() => safeGetItem('categories', initialCategories));
     const [orders, setOrders] = useState(() => safeGetItem('orders', []));
 
-    const [orderTypes, setOrderTypes] = useState(() => safeGetItem('orderTypes', [
-        { id: 'dine-in', name: 'Dine-in' },
-        { id: 'pickup', name: 'Pickup' },
-        { id: 'delivery', name: 'Delivery' }
-    ]));
+    const [orderTypes, setOrderTypes] = useState(() => safeGetItem('orderTypes', []));
 
-    const [paymentSettings, setPaymentSettings] = useState(() => safeGetItem('paymentSettings', [
-        { id: 'gcash', name: 'GCash', accountNumber: '', accountName: '', qrUrl: '' },
-        { id: 'paymaya', name: 'PayMaya', accountNumber: '', accountName: '', qrUrl: '' }
-    ]));
+    const [paymentSettings, setPaymentSettings] = useState(() => safeGetItem('paymentSettings', []));
 
     const [storeSettings, setStoreSettings] = useState(() => safeGetItem('storeSettings', {
         manual_status: 'auto', // auto, open, closed
@@ -108,32 +101,35 @@ const AdminDashboard = () => {
     // --- FETCH DATA FROM SUPABASE ---
     useEffect(() => {
         const fetchAdminData = async () => {
+            if (!supabase) return;
             try {
                 const { data: catData, error: catError } = await supabase.from('categories').select('*').order('sort_order', { ascending: true });
-                if (catError) throw catError;
-                if (catData) setCategories(catData.filter(c => c.name !== 'Order Map' && c.id !== 'full-menu'));
+                if (catError) console.warn('Categories fetch error:', catError);
+                if (catData && Array.isArray(catData)) {
+                    setCategories(catData.filter(c => c && c.name && c.name !== 'Order Map' && c.id !== 'full-menu'));
+                }
 
                 const { data: itemData, error: itemError } = await supabase.from('menu_items').select('*').order('sort_order', { ascending: true });
-                if (itemError) throw itemError;
-                if (itemData) setItems(itemData);
+                if (itemError) console.warn('Menu items fetch error:', itemError);
+                if (itemData && Array.isArray(itemData)) setItems(itemData.filter(i => i && i.id));
 
                 const { data: payData, error: payError } = await supabase.from('payment_settings').select('*');
-                if (payError) throw payError;
-                if (payData) setPaymentSettings(payData);
+                if (payError) console.warn('Payment settings fetch error:', payError);
+                if (payData && Array.isArray(payData)) setPaymentSettings(payData.filter(p => p && p.id));
 
                 const { data: typeData, error: typeError } = await supabase.from('order_types').select('*');
-                if (typeError) throw typeError;
-                if (typeData) setOrderTypes(typeData);
+                if (typeError) console.warn('Order types fetch error:', typeError);
+                if (typeData && Array.isArray(typeData)) setOrderTypes(typeData.filter(t => t && t.id));
 
                 const { data: storeData, error: storeError } = await supabase.from('store_settings').select('*').limit(1).single();
-                if (storeError && storeError.code !== 'PGRST116') throw storeError; // Ignore if no settings record yet
-                if (storeData) setStoreSettings(storeData);
+                if (storeError && storeError.code !== 'PGRST116') console.warn('Store settings fetch error:', storeError);
+                if (storeData) setStoreSettings(prev => ({ ...prev, ...storeData }));
 
                 const { data: orderData, error: orderError } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
-                if (orderError) throw orderError;
-                if (orderData) setOrders(orderData);
+                if (orderError) console.warn('Orders fetch error:', orderError);
+                if (orderData && Array.isArray(orderData)) setOrders(orderData.filter(o => o && o.id));
             } catch (err) {
-                console.error('Error fetching admin data:', err);
+                console.error('Error in fetchAdminData:', err);
                 showMessage(`Error loading data: ${err.message || 'Unknown error'}`);
             }
         };
@@ -146,7 +142,8 @@ const AdminDashboard = () => {
         setTimeout(() => setMessage(''), 3000);
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
         localStorage.removeItem('admin_bypass');
         navigate('/admin');
     };

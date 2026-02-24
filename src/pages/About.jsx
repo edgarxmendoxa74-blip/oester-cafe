@@ -19,19 +19,6 @@ const About = () => {
 
     return (
         <div className="page-wrapper">
-            <header className="app-header">
-                <div className="container header-container">
-                    <Link to="/" className="brand">
-                        <img src={storeSettings.logo_url || "/logo.png"} alt="Oesters Logo" style={{ height: '50px' }} />
-
-                    </Link>
-                    <nav className="header-nav" style={{ display: 'flex', gap: '20px' }}>
-                        <Link to="/" className="nav-link">Home</Link>
-
-                        <Link to="/contact" className="nav-link">Contact</Link>
-                    </nav>
-                </div>
-            </header>
 
             <main className="container" style={{ padding: '80px 0' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '60px', alignItems: 'center', marginBottom: '80px' }}>
@@ -48,7 +35,7 @@ const About = () => {
                 </div>
 
             </main>
-        </div>
+        </div >
     );
 };
 

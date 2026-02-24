@@ -32,19 +32,6 @@ const Contact = () => {
 
     return (
         <div className="page-wrapper">
-            <header className="app-header">
-                <div className="container header-container">
-                    <Link to="/" className="brand">
-                        <img src={storeSettings.logo_url || "/logo.png"} alt="Oesters Logo" style={{ height: '50px' }} />
-
-                    </Link>
-                    <nav className="header-nav" style={{ display: 'flex', gap: '20px' }}>
-                        <Link to="/" className="nav-link">Home</Link>
-
-                        <Link to="/contact" className="nav-link">Contact</Link>
-                    </nav>
-                </div>
-            </header>
 
             <main className="container" style={{ padding: '80px 0' }}>
                 <div style={{ textAlign: 'center', marginBottom: '60px' }}>
