@@ -49,7 +49,7 @@ const OrderHistory = ({ orders, setOrders, storeSettings, showMessage }) => {
                 </head>
                 <body>
                     <div class="center">
-                        ${storeSettings.logo_url ? `<img src="${storeSettings.logo_url}" class="logo">` : ''}
+
                         <div style="font-weight:bold; font-size: 14px; text-transform: uppercase;">${storeSettings.store_name}</div>
                         <div style="margin-top: 2px;">${storeSettings.address}</div>
                         <div>Tel: ${storeSettings.contact}</div>

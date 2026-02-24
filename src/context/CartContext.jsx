@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
 
 const CartContext = createContext();
 
@@ -8,6 +9,8 @@ export const CartProvider = ({ children }) => {
     const [cart, setCart] = useState([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+    const [categories, setCategories] = useState([]);
+    const [activeCategory, setActiveCategory] = useState('');
 
     // Load cart from local storage on mount
     useEffect(() => {
@@ -19,6 +22,16 @@ export const CartProvider = ({ children }) => {
                 console.error("Error parsing cart", e);
             }
         }
+
+        const fetchCategories = async () => {
+            const { data, error } = await supabase.from('categories').select('*').order('sort_order', { ascending: true });
+            if (!error && data) {
+                const validCats = data.filter(c => c.name !== 'Order Map');
+                setCategories(validCats);
+                if (validCats.length > 0) setActiveCategory(validCats[0].id);
+            }
+        };
+        fetchCategories();
     }, []);
 
     // Save cart to local storage whenever it changes
@@ -90,7 +103,10 @@ export const CartProvider = ({ children }) => {
             isCartOpen,
             setIsCartOpen,
             isCheckoutOpen,
-            setIsCheckoutOpen
+            setIsCheckoutOpen,
+            categories,
+            activeCategory,
+            setActiveCategory
         }}>
             {children}
         </CartContext.Provider>

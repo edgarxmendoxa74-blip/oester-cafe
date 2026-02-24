@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Clock, FileText, Camera, Plus, X, ImageIcon } from 'lucide-react';
+import { Clock, FileText, Plus, X, ImageIcon } from 'lucide-react';
 import { inputStyle } from './Shared';
 
 const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) => {
@@ -25,8 +25,8 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
             open_time: '16:00',
             close_time: '01:00',
             manual_status: 'auto',
-            logo_url: '/logo.png',
-            banner_images: []
+            banner_images: [],
+            logo_url: ''
         };
 
         setIsProcessing(true);
@@ -53,7 +53,8 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
             contact: formData.get('contact'),
             open_time: formData.get('openTime'),
             close_time: formData.get('closeTime'),
-            manual_status: formData.get('manualStatus')
+            manual_status: formData.get('manualStatus'),
+            logo_url: storeSettings.logo_url
         };
 
         setIsProcessing(true);
@@ -70,6 +71,43 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
         }
         setStoreSettings(data);
         showMessage('General settings saved!');
+    };
+
+    const handleLogoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) {
+            // Clear logo if no file (triggered by clear button)
+            const targetId = await getValidId(storeSettings.id);
+            if (targetId) {
+                await supabase.from('store_settings').update({ logo_url: '' }).eq('id', targetId);
+            }
+            setStoreSettings({ ...storeSettings, logo_url: '' });
+            showMessage('Logo cleared.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const logoData = reader.result;
+            const targetId = await getValidId(storeSettings.id);
+            let error;
+            if (targetId) {
+                const res = await supabase.from('store_settings').update({ logo_url: logoData }).eq('id', targetId);
+                error = res.error;
+            } else {
+                const res = await supabase.from('store_settings').upsert({ logo_url: logoData }).select().single();
+                error = res.error;
+                if (res.data) setStoreSettings(res.data);
+            }
+            if (error) {
+                console.error(error);
+                showMessage(`Error saving logo: ${error.message}`);
+                return;
+            }
+            if (targetId) setStoreSettings({ ...storeSettings, logo_url: logoData });
+            showMessage('Logo uploaded!');
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleBannerUpload = async (e) => {
@@ -118,33 +156,6 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
         showMessage('Banner removed.');
     };
 
-    const handleLogoUpload = async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const logo_url = reader.result;
-                const targetId = await getValidId(storeSettings.id);
-                let error;
-                if (targetId) {
-                    const res = await supabase.from('store_settings').update({ logo_url }).eq('id', targetId);
-                    error = res.error;
-                } else {
-                    const res = await supabase.from('store_settings').upsert({ logo_url }).select().single();
-                    error = res.error;
-                    if (res.data) setStoreSettings(res.data);
-                }
-                if (error) {
-                    console.error(error);
-                    showMessage(`Error saving logo: ${error.message}`);
-                    return;
-                }
-                if (targetId) setStoreSettings({ ...storeSettings, logo_url });
-                showMessage('Logo updated!');
-            };
-            reader.readAsDataURL(file);
-        }
-    };
 
     return (
         <div className="admin-card" style={{ background: 'white', padding: '30px', borderRadius: '24px' }}>
@@ -207,18 +218,37 @@ const StoreGeneralSettings = ({ storeSettings, setStoreSettings, showMessage }) 
                             <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Store Name</label><input name="storeName" defaultValue={storeSettings.store_name} style={inputStyle} /></div>
                             <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Address</label><input name="address" defaultValue={storeSettings.address} style={inputStyle} /></div>
                             <div><label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Contact Number</label><input name="contact" defaultValue={storeSettings.contact} style={inputStyle} /></div>
+                            <div style={{ marginTop: '10px' }}>
+                                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '8px', fontWeight: 600 }}>Store Logo</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                    {storeSettings.logo_url ? (
+                                        <div style={{ position: 'relative', width: '80px', height: '80px' }}>
+                                            <img src={storeSettings.logo_url} style={{ width: '80px', height: '80px', borderRadius: '12px', objectFit: 'contain', background: '#f8fafc', border: '1px solid #e2e8f0' }} alt="Logo" />
+                                            <button
+                                                type="button"
+                                                onClick={() => handleLogoUpload({ target: { files: [] } })}
+                                                style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <label style={{ width: '80px', height: '80px', border: '2px dashed #e2e8f0', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--primary)'} onMouseOut={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}>
+                                            <Plus size={24} />
+                                            <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>Upload</span>
+                                            <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
+                                        </label>
+                                    )}
+                                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                        <div style={{ fontWeight: 600, color: '#334155' }}>Logo Image</div>
+                                        <div>Recommended: Square PNG</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div>
-                        <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <Camera size={20} /> Store Logo
-                        </h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            {storeSettings.logo_url && <img src={storeSettings.logo_url} style={{ width: '120px', height: '120px', objectFit: 'contain', border: '1px solid #ddd', borderRadius: '10px' }} />}
-                            <input type="file" accept="image/*" onChange={handleLogoUpload} style={inputStyle} />
-                        </div>
-                    </div>
+
 
                     <div style={{ gridColumn: '1 / -1' }}>
                         <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>

@@ -37,12 +37,13 @@ const Home = () => {
         removeFromCart,
         deleteFromCart,
         cartTotal,
-        cartCount
+        cartCount,
+        categories,
+        activeCategory,
+        setActiveCategory
     } = useCart();
 
     const [items, setItems] = useState(menuItems || []);
-    const [categories, setCategories] = useState(initialCategories || []);
-    const [activeCategory, setActiveCategory] = useState(''); // Initialize empty to force valid selection on load
     const [paymentSettings, setPaymentSettings] = useState([]);
     const [orderTypes, setOrderTypes] = useState([
         { id: 'dine-in', name: 'Dine-in' },
@@ -56,7 +57,6 @@ const Home = () => {
         store_name: '',
         address: 'Poblacion, El Nido, Palawan',
         contact: '09563713967',
-        logo_url: '',
         banner_images: []
     });
 
@@ -120,16 +120,7 @@ const Home = () => {
                 const savedOrderTypes = localStorage.getItem('orderTypes');
 
                 if (savedCats) {
-                    const parsed = JSON.parse(savedCats);
-                    if (Array.isArray(parsed)) {
-                        const validCats = parsed.filter(c => c && typeof c === 'object' && c.id);
-                        if (validCats.length > 0) {
-                            setCategories(validCats);
-                            if (!activeCategory || !validCats.find(c => c.id === activeCategory)) {
-                                if (validCats[0]) setActiveCategory(validCats[0].id);
-                            }
-                        }
-                    }
+                    // Handled by context now
                 }
 
                 if (savedItems) {
@@ -195,22 +186,9 @@ const Home = () => {
                 // MERGE STRATEGY: Combine remote data with local hardcoded data to ensure new items show up
                 let finalCategories = [...(initialCategories || [])];
                 if (catData && Array.isArray(catData)) {
-                    // Update existing or add new from DB
-                    catData.forEach(remoteCat => {
-                        if (!remoteCat || !remoteCat.id) return;
-                        const idx = finalCategories.findIndex(c => c && c.id === remoteCat.id);
-                        if (idx >= 0) finalCategories[idx] = remoteCat;
-                        else finalCategories.push(remoteCat);
-                    });
-                }
-                const filteredCategories = finalCategories.filter(c => c && c.name && c.name !== 'Order Map' && c.id !== 'full-menu');
-                setCategories(filteredCategories);
-                safeSetItem('categories', filteredCategories);
-
-                if (!activeCategory || !filteredCategories.find(c => c && c.id === activeCategory)) {
-                    if (filteredCategories.length > 0) {
-                        setActiveCategory(filteredCategories[0].id);
-                    }
+                    // Update cache for other components
+                    const filteredRemote = catData.filter(c => c && c.name && c.name !== 'Order Map' && c.id !== 'full-menu');
+                    safeSetItem('categories', filteredRemote);
                 }
 
                 let finalItems = [...(menuItems || [])];
@@ -364,24 +342,7 @@ const Home = () => {
 
     return (
         <div className="page-wrapper">
-            <div className="category-nav-wrapper" style={{ position: 'sticky', top: isOpen ? '90px' : '125px', zIndex: 90, background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border)' }}>
-                <div className="container">
-                    <div className="category-slider">
-                        {categories.map(cat => (
-                            <div
-                                key={cat.id}
-                                className={`category-item ${activeCategory === cat.id ? 'active' : ''}`}
-                                onClick={() => {
-                                    setActiveCategory(cat.id);
-                                    document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                }}
-                            >
-                                {cat.name}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
+            {/* Categories moved to Header */}
 
             {/* Hero Section */}
             <section className="hero-section" style={{ overflow: 'hidden' }}>

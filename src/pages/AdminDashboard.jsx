@@ -81,12 +81,12 @@ const AdminDashboard = () => {
         store_name: '',
         address: 'Poblacion, El Nido, Palawan',
         contact: '09563713967',
-        logo_url: '',
         banner_images: [
             'https://images.unsplash.com/photo-1517701604599-bb29b565094d?auto=format&fit=crop&w=1200&q=80',
             'https://images.unsplash.com/photo-1541167760496-162955ed8a9f?auto=format&fit=crop&w=1200&q=80',
             'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80'
-        ]
+        ],
+        logo_url: ''
     }));
 
     // --- SYNC TO LOCAL STORAGE ---

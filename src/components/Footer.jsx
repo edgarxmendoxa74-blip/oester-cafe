@@ -9,7 +9,6 @@ const Footer = () => {
         store_name: 'Oesters Cafe and Resto',
         address: 'Poblacion, El Nido, Palawan',
         contact: '09563713967',
-        logo_url: ''
     });
 
     useEffect(() => {
@@ -28,8 +27,8 @@ const Footer = () => {
             <div className="container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '60px' }}>
                 {/* Brand Section */}
                 <div>
-                    <Link to="/" className="brand" style={{ marginBottom: '25px', display: 'inline-block' }}>
-                        <img src={storeSettings.logo_url || "/logo.png"} alt="Oesters" style={{ height: '60px', filter: 'brightness(0) invert(1)' }} />
+                    <Link to="/" className="brand" style={{ marginBottom: '15px', display: 'inline-block', fontSize: '1.8rem', fontWeight: 700, textDecoration: 'none', color: 'white', fontFamily: 'Playfair Display, serif' }}>
+                        Oesters
                     </Link>
                     <p style={{ color: 'rgba(255,255,255,0.7)', lineHeight: '1.8', marginBottom: '30px' }}>
                         Freshness in every shell. Experience the best seafood and specialty coffee in town.

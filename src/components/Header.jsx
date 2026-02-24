@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Clock } from 'lucide-react';
+import { ShoppingBag, Clock } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../supabaseClient';
 
 const Header = () => {
-    const { cartCount, setIsCartOpen } = useCart();
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const { cartCount, setIsCartOpen, categories, activeCategory, setActiveCategory } = useCart();
     const [storeSettings, setStoreSettings] = useState({
-        logo_url: '',
         open_time: '10:00',
         close_time: '01:00',
         manual_status: 'auto'
@@ -55,14 +53,20 @@ const Header = () => {
                     WE ARE CURRENTLY CLOSED. Orders are disabled.
                 </div>
             )}
-            <header className="app-header" style={{ top: isOpen ? 0 : '35px' }}>
+            <header className="app-header" style={{ top: isOpen ? 0 : '35px', paddingBottom: '0' }}>
                 <div className="container header-container">
-                    <Link to="/" className="brand">
-                        <img src={storeSettings.logo_url || "/logo.png"} alt="Oesters" style={{ height: '50px' }} />
+                    <Link to="/" className="brand" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+                        {storeSettings.logo_url ? (
+                            <img src={storeSettings.logo_url} alt={storeSettings.store_name || 'Oesters Logo'} style={{ height: '45px', width: 'auto', objectFit: 'contain' }} />
+                        ) : (
+                            <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)', fontFamily: 'Playfair Display, serif' }}>
+                                {storeSettings.store_name || 'Oesters'}
+                            </span>
+                        )}
                     </Link>
 
-                    {/* Desktop Nav */}
-                    <nav className="header-nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
+                    {/* Navigation */}
+                    <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                         <Link to="/contact" className={`nav-link ${location.pathname === '/contact' ? 'active' : ''}`}>Contact</Link>
 
                         <button className="btn-accent" onClick={() => setIsCartOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -71,30 +75,62 @@ const Header = () => {
                         </button>
                     </nav>
 
-                    {/* Mobile Toggle */}
-                    <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(!isMenuOpen)} style={{ display: 'none', background: 'none', border: 'none', color: 'var(--primary)' }}>
-                        {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
-                    </button>
                 </div>
 
-                {/* Mobile Menu */}
-                {isMenuOpen && (
-                    <div className="mobile-menu" style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '15px', zIndex: 1000 }}>
-                        <Link to="/contact" onClick={() => setIsMenuOpen(false)} className="nav-link">Contact</Link>
-                        <button className="btn-accent" onClick={() => { setIsCartOpen(true); setIsMenuOpen(false); }} style={{ width: '100%', justifyContent: 'center' }}>
-                            <ShoppingBag size={18} style={{ marginRight: '8px' }} />
-                            Cart ({cartCount})
-                        </button>
+                {/* Categories Row (Merged in Header) */}
+                {location.pathname === '/' && categories.length > 0 && (
+                    <div className="category-nav-wrapper" style={{ borderTop: '1px solid var(--border)', background: '#fff' }}>
+                        <div className="container">
+                            <div className="category-slider" style={{ padding: '10px 0' }}>
+                                {categories.map(cat => (
+                                    <div
+                                        key={cat.id}
+                                        className={`category-item ${activeCategory === cat.id ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setActiveCategory(cat.id);
+                                            document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        }}
+                                    >
+                                        {cat.name}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 )}
+
             </header>
 
             <style>{`
-                @media (max-width: 768px) {
-                    .header-nav-desktop { display: none !important; }
-                    .mobile-menu-toggle { display: block !important; }
-                }
                 .nav-link.active { color: var(--primary); border-bottom: 2px solid var(--primary); }
+                
+                .category-slider {
+                    display: flex;
+                    gap: 10px;
+                    overflow-x: auto;
+                    scroll-behavior: smooth;
+                    scrollbar-width: none;
+                    -ms-overflow-style: none;
+                }
+                .category-slider::-webkit-scrollbar {
+                    display: none;
+                }
+                .category-item {
+                    flex: 0 0 auto;
+                    padding: 6px 15px;
+                    border-radius: 20px;
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    transition: all 0.3s;
+                    border: 1px solid var(--border);
+                }
+                .category-item.active {
+                    background: var(--primary);
+                    color: white;
+                    border-color: var(--primary);
+                }
             `}</style>
         </>
     );
